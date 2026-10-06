@@ -60,6 +60,13 @@ for (const route of [
 ]) {
   test(`accessible foundation ${route}`, async ({ page }) => {
     await page.goto(route);
+    if (route === '/sign-in' || route === '/sign-up') {
+      await expect(
+        page
+          .locator('.cl-card')
+          .or(page.getByText('Identity is not configured yet.', { exact: false })),
+      ).toBeVisible();
+    }
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();

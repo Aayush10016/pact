@@ -32,6 +32,7 @@ export class JobRuntime implements OnModuleInit, OnModuleDestroy {
       port: Number(u.port || 6379),
       username: u.username || undefined,
       password: u.password || undefined,
+      db: Number(u.pathname.slice(1) || '0'),
       ...(u.protocol === 'rediss:' ? { tls: {} } : {}),
     };
     for (const kind of kinds) {

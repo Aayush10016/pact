@@ -130,6 +130,16 @@ class IdentityController {
   @Get() async me(@Req() req: AuthRequest) {
     return { data: req.identity };
   }
+  @Get('notifications') async notifications(@Req() req: AuthRequest) {
+    return {
+      data: (
+        await this.db.query(
+          'SELECT n.id,n.pact_id,n.type,n.created_at,n.read_at FROM notifications n JOIN parties p ON p.pact_id=n.pact_id AND p.user_id=n.user_id WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 50',
+          [req.identity.id],
+        )
+      ).rows,
+    };
+  }
   @Get('invitations') async invitations(@Req() req: AuthRequest) {
     return {
       data: (

@@ -87,6 +87,13 @@ Do not hold a DB transaction open through a long remote call; use an outbox and 
 
 ## Deployment
 
+Phase 3 uses local Docker PostgreSQL/Redis/MinIO/ClamAV and free Tesseract OCR. EvidenceStorage
+retains R2 and selects MinIO for local validation. CLEAN scan state gates extraction, download
+and assessment. Ambiguous financial operations are never reissued by workers; audited allowlisted
+operator reconciliation uses provider GET readback and locked current consent/version checks.
+See [Phase 3 setup and release gates](docs/PHASE_3.md). The deployment alternatives below are
+future options and are not required or provisioned for the free local product.
+
 Next.js on Vercel; NestJS and FastAPI on Railway or equivalent; managed PostgreSQL and Redis;
 R2 for private evidence. No Kubernetes. Internal AI routes require service identity and network
 restriction before deployment. Add pgvector only after retrieval demonstrates a need.

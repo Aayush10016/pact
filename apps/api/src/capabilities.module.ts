@@ -2,14 +2,14 @@ import { Controller, Get, Module, Inject, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthModule, AuthenticationGuard } from './auth/auth.module';
 import { EvidenceModule } from './evidence/evidence.module';
-import { R2Storage } from './evidence/storage';
+import { EvidenceStorage } from './evidence/storage';
 import { PaymentsModule } from './payments/payments.module';
 import { PayPalProvider } from './payments/paypal.provider';
 @Controller('v1/capabilities')
 @UseGuards(AuthenticationGuard)
 class CapabilitiesController {
   constructor(
-    @Inject(R2Storage) readonly storage: R2Storage,
+    @Inject(EvidenceStorage) readonly storage: EvidenceStorage,
     @Inject(PayPalProvider) readonly paypal: PayPalProvider,
   ) {}
   @Get() async get() {

@@ -46,6 +46,15 @@ Live provider/credential lifecycle validation is outstanding. No production-mone
 
 ## Secrets
 
+Phase 3 local evidence uses private, versioned MinIO and mandatory ClamAV quarantine before
+extraction/AI/download. Scanner errors fail closed. Document/image processing is bounded and
+OCR text is untrusted. Exact citations and quoted factual claims are validated independently
+in Python and the API. AI has no payment credentials or execution tools. URL ingestion stays disabled.
+Operators require authenticated Clerk subjects on an explicit server allowlist; reconciliation
+only reads PayPal and verifies persisted current consent, provider linkage and integer amounts.
+The free HTTPS tunnel forwards only bounded webhook POSTs through a restricted relay. Retention
+is conservative and automatic deletion is disabled. See [Phase 3 details](docs/PHASE_3.md).
+
 `.env` is ignored. `.env.example` contains empty integration fields and clearly disposable local
 database credentials. Never reuse those defaults in deployment. Frontend public variables must
 never contain private keys. Docker contexts exclude env files. CI needs no real integrations.

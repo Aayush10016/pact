@@ -10,13 +10,13 @@ import { evidenceInputSchema, idSchema } from '@pact/types';
 import { Database, member, audit, enqueue } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
-import { R2Storage } from './storage';
+import { EvidenceStorage } from './storage';
 import { validateFile } from './file-policy';
 @Injectable()
 export class EvidenceService {
   constructor(
     @Inject(Database) readonly db: Database,
-    @Inject(R2Storage) readonly storage: R2Storage,
+    @Inject(EvidenceStorage) readonly storage: EvidenceStorage,
   ) {}
   async upload(
     pactId: string,
@@ -149,18 +149,12 @@ export class EvidenceService {
     const key = await this.db.transaction(async (db) => {
       await member(db, pactId, user.id);
       const v = await db.query(
-        'SELECT v.object_key,v.mime_type,v.state FROM evidence_versions v JOIN evidence e ON e.id=v.evidence_id WHERE v.id=$1 AND e.pact_id=$2',
+        'SELECT v.object_key,v.scan_state,v.purged_at FROM evidence_versions v JOIN evidence e ON e.id=v.evidence_id WHERE v.id=$1 AND e.pact_id=$2',
         [versionId, pactId],
       );
       if (!v.rowCount) throw new NotFoundException('Evidence version not found.');
-      if (
-        [
-          'application/pdf',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ].includes(v.rows[0].mime_type) &&
-        v.rows[0].state !== 'READY'
-      )
-        throw new ConflictException('Document safety and extraction are not confirmed.');
+      if (v.rows[0].scan_state !== 'CLEAN' || v.rows[0].purged_at)
+        throw new ConflictException('Evidence is quarantined or no longer retained.');
       return v.rows[0].object_key as string;
     });
     return { url: await this.storage.download(key), expiresIn: 120 };

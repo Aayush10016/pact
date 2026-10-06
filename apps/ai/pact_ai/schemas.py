@@ -21,6 +21,36 @@ class Recommendation(StrictModel):
         return self
 
 
+class EvidenceCitation(StrictModel):
+    evidenceId: str = Field(min_length=1, max_length=100)
+    quote: str = Field(min_length=1, max_length=1000)
+
+
+class CommitmentExtractionRequest(StrictModel):
+    agreement: str = Field(min_length=20, max_length=20000)
+
+
+class ExtractedMilestone(StrictModel):
+    title: str = Field(min_length=3, max_length=120)
+    deadline: str | None = Field(default=None, max_length=100)
+    sourceQuote: str = Field(min_length=1, max_length=1000)
+
+
+class ExtractedCommitment(StrictModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=4000)
+    criteria: list[str] = Field(max_length=20)
+    deliverables: list[str] = Field(max_length=20)
+    deadline: str | None = Field(default=None, max_length=100)
+    milestones: list[ExtractedMilestone] = Field(max_length=20)
+    sourceQuote: str = Field(min_length=1, max_length=1000)
+
+
+class CommitmentExtraction(StrictModel):
+    commitments: list[ExtractedCommitment] = Field(min_length=1, max_length=20)
+    uncertainty: list[str] = Field(max_length=20)
+
+
 class CommitmentAssessment(StrictModel):
     commitmentId: str
     status: Literal["FULFILLED", "PARTIALLY_FULFILLED", "UNFULFILLED", "UNCLEAR"]
@@ -28,6 +58,7 @@ class CommitmentAssessment(StrictModel):
     claim: str = Field(max_length=1000)
     inference: str = Field(max_length=1000)
     uncertainty: str = Field(max_length=1000)
+    citations: list[EvidenceCitation] = Field(default_factory=list, max_length=50)
 
 
 class Assessment(StrictModel):

@@ -480,6 +480,9 @@ function PrivateDetail({ id }: { id: string }) {
                     <p className="mono">
                       Confidence estimate: {Math.round(assessment.data.confidence * 100)}%
                     </p>
+                    <p className="muted">
+                      A bounded model estimate, not measured statistical calibration.
+                    </p>
                     <p className="field-help">
                       A bounded model estimate, not a guarantee or a measured probability. Missing
                       evidence remains explicit.

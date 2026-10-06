@@ -2,9 +2,10 @@
 
 **Make the commitment. Prove the work. Resolve fairly.**
 
-Phase 2 connects the approved Phase 1 interface to persistent agreements, private evidence,
-advisory assessments, versioned consent, and PayPal Sandbox. It is a development product;
-real provider credentials and an externally verified lifecycle remain required before release.
+Phase 3 preserves the approved interface and adds free local private storage, malware scanning,
+OCR, evidence-grounded NVIDIA reasoning, operator reconciliation and recovery tooling. It is a
+development product; the real two-party PayPal lifecycle remains a release gate. See
+[Phase 3 setup, actual provider proof and blockers](docs/PHASE_3.md).
 
 ## Run locally
 
@@ -14,8 +15,9 @@ Preserve an existing `.env`; copy `.env.example` only when no local environment 
 ```powershell
 pnpm install --frozen-lockfile
 pnpm prepare:packages
-docker compose up -d postgres redis
+docker compose up -d --build postgres redis minio clamav ai
 pnpm db:bootstrap
+node scripts/minio-bootstrap.mjs
 python -m venv apps/ai/.venv
 apps/ai/.venv/Scripts/python -m pip install -r apps/ai/requirements.lock.txt
 pnpm build
@@ -39,15 +41,15 @@ Local role provisioning refuses production mode and databases other than explici
 
 - Verified Clerk identity; email-matched invitation and agreement review before acceptance.
 - Persistent Pacts, commitments, optional milestones, party-neutral payer selection, integer money.
-- Private R2 uploads with immutable versions, bounded TXT/PDF/DOCX extraction, short-lived downloads.
+- Private MinIO/R2 uploads, immutable versions, ClamAV quarantine, bounded document/OCR extraction.
 - NVIDIA NIM Nemotron assessment with structured claims, citations, uncertainty and missing evidence.
 - Explicit, equal-weight approval/rejection for an exact version and financial consequence.
 - PayPal Sandbox orders, capture and full/partial refunds; verified webhooks confirm financial state.
 - PostgreSQL outbox, BullMQ retries, safe request IDs, append-only audit, per-user budgets.
 
 `/preview` preserves clearly labeled Phase 1 sample screens. `/workspace` uses real records;
-unconfigured identity/providers stay unavailable. Images support private human review; OCR is
-not implemented. URL evidence ingestion is disabled. Confidence is a bounded model estimate,
+unconfigured identity/providers stay unavailable. PNG/JPEG supports bounded local Tesseract OCR.
+URL evidence ingestion is disabled. Confidence is a bounded model estimate,
 not empirically calibrated. Inference cannot approve or execute financial actions.
 
 ## Configuration and validation
@@ -66,7 +68,8 @@ pnpm test:e2e
 ```
 
 Integration tests require DATABASE_URL pointing to a bootstrapped restricted runtime role and
-REDIS_URL. Use the separate `pact_phase2_tests` database locally; tests insert synthetic records
+REDIS_URL. Use `node scripts/test-integration-local.mjs` with the separate `pact_phase3_tests`
+database and Redis DB 3 locally; tests insert synthetic records
 and never delete user data. CI uses an isolated database. Provider doubles exist only inside tests;
 they are not a runtime fallback or evidence of live provider success.
 Python: `apps/ai/.venv/Scripts/python -m ruff check apps/ai` and

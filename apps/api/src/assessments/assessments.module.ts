@@ -18,7 +18,7 @@ import { parse } from '../pacts/lifecycle.service';
 export async function evidenceSnapshot(db: { query: Database['query'] }, pactId: string) {
   return (
     await db.query(
-      'SELECT DISTINCT ON(e.id) v.id,v.state,v.extracted_text,e.commitment_id FROM evidence e JOIN evidence_versions v ON v.evidence_id=e.id WHERE e.pact_id=$1 ORDER BY e.id,v.version DESC',
+      "SELECT DISTINCT ON(e.id) v.id,CASE WHEN v.scan_state='CLEAN' AND v.purged_at IS NULL THEN v.state ELSE 'FAILED' END AS state,v.extracted_text,e.commitment_id FROM evidence e JOIN evidence_versions v ON v.evidence_id=e.id WHERE e.pact_id=$1 ORDER BY e.id,v.version DESC",
       [pactId],
     )
   ).rows;

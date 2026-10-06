@@ -80,6 +80,10 @@ export const groundedAssessmentSchema = assessmentSchema.safeExtend({
           claim: z.string().max(1000),
           inference: z.string().max(1000),
           uncertainty: z.string().max(1000),
+          citations: z
+            .array(z.object({ evidenceId: idSchema, quote: z.string().min(1).max(1000) }).strict())
+            .max(50)
+            .default([]),
         })
         .strict(),
     )

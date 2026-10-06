@@ -127,9 +127,10 @@ class WebhookController {
       if (receipt.rowCount && allowed.has(event.event_type))
         await enqueue(db, 'WEBHOOK', receipt.rows[0].id, `webhook-${receipt.rows[0].id}`);
       else if (receipt.rowCount)
-        await db.query('UPDATE paypal_webhook_events SET processed_at=now() WHERE id=$1', [
-          receipt.rows[0].id,
-        ]);
+        await db.query(
+          "UPDATE paypal_webhook_events SET processed_at=now(),processing_status='IGNORED' WHERE id=$1",
+          [receipt.rows[0].id],
+        );
     });
     return { received: true };
   }

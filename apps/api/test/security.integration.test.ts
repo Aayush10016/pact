@@ -6,8 +6,9 @@ import { readFile } from 'node:fs/promises';
 import { AppModule } from '../src/app.module';
 import { Database } from '../src/database/database.module';
 import { IdentityVerifier } from '../src/auth/auth.module';
-import { R2Storage } from '../src/evidence/storage';
-import { PayPalProvider, decimalAmount } from '../src/payments/paypal.provider';
+import { EvidenceStorage } from '../src/evidence/storage';
+import { EvidenceScanner } from '../src/evidence/scanner';
+import { PayPalProvider, decimalAmount, ProviderError } from '../src/payments/paypal.provider';
 import { JobRuntime } from '../src/jobs/jobs.module';
 import { LifecycleJobs } from '../src/jobs/lifecycle-jobs';
 import { HttpErrorFilter } from '../src/common/http-error.filter';
@@ -34,7 +35,9 @@ let captureCalls = 0;
 let orderCalls = 0;
 let orderId = `ORDER${group.replaceAll('-', '').slice(0, 16)}`;
 let captureId = `CAP${group.replaceAll('-', '').slice(0, 16)}`;
-const refundId = `REF${group.replaceAll('-', '').slice(0, 16)}`;
+let refundId = `REF${group.replaceAll('-', '').slice(0, 16)}`;
+let refundMinor = '765';
+let ambiguousRefund = false;
 const amount = { currency_code: 'USD', value: '25.50' };
 const paypal = {
   enabled: () => true,
@@ -77,6 +80,8 @@ const paypal = {
   refund: async (_id: string, minor: string) => {
     refundCalls++;
     refunded = true;
+    refundMinor = minor;
+    if (ambiguousRefund) throw new ProviderError(true);
     return {
       id: refundId,
       status: 'COMPLETED',
@@ -86,7 +91,7 @@ const paypal = {
   getRefund: async () => ({
     id: refundId,
     status: 'COMPLETED',
-    amount: { currency_code: 'USD', value: '7.65' },
+    amount: { currency_code: 'USD', value: decimalAmount(refundMinor) },
     links: [
       { rel: 'up', href: `https://api-m.sandbox.paypal.com/v2/payments/captures/${captureId}` },
     ],
@@ -146,7 +151,13 @@ beforeAll(async () => {
             commitmentId: c.id,
             status: 'UNCLEAR',
             evidenceIds: [input.evidence[0].id],
-            claim: 'Delivery was claimed.',
+            claim: 'A dated delivery receipt; source assets are missing.',
+            citations: [
+              {
+                evidenceId: input.evidence[0].id,
+                quote: 'A dated delivery receipt; source assets are missing.',
+              },
+            ],
             inference: 'Complete source delivery is not established.',
             uncertainty: 'Source assets are missing.',
           })),
@@ -168,8 +179,10 @@ beforeAll(async () => {
         };
       },
     })
-    .overrideProvider(R2Storage)
+    .overrideProvider(EvidenceStorage)
     .useValue(storage)
+    .overrideProvider(EvidenceScanner)
+    .useValue({ scan: async () => 'CLEAN' })
     .overrideProvider(PayPalProvider)
     .useValue(paypal)
     .overrideProvider(JobRuntime)
@@ -500,4 +513,84 @@ it('completes an agreed delivery only after both approvals, without refunding th
       (a: { event_type: string }) => a.event_type === 'RESOLUTION_CONFIRMED_NO_FINANCIAL_ACTION',
     ),
   ).toBe(true);
+});
+
+it('never retries an ambiguous full refund and reconciles only verified readback with current consent', async () => {
+  captured = false;
+  refunded = false;
+  orderId = `RECONORDER${group.replaceAll('-', '').slice(0, 12)}`;
+  captureId = `RECONCAP${group.replaceAll('-', '').slice(0, 12)}`;
+  refundId = `RECONREF${group.replaceAll('-', '').slice(0, 12)}`;
+  const created = await request(
+    'a',
+    'pacts',
+    { ...body, title: 'Full refund reconciliation lifecycle' },
+    crypto.randomUUID(),
+  );
+  expect(created.status).toBe(201);
+  pactId = (await created.json()).data.id;
+  const invites = (await (await request('b', 'me/invitations')).json()).data;
+  const invite = invites.find((i: { pact_id: string }) => i.pact_id === pactId);
+  await request('b', `invitations/${invite.id}/accept`, {});
+  const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+  await jobs.payment(order.id);
+  const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  await jobs.payment(capture.id);
+  const event = `RECON-CAPTURE-${group}`;
+  await webhook(event, 'PAYMENT.CAPTURE.COMPLETED', {
+    id: captureId,
+    supplementary_data: { related_ids: { order_id: orderId } },
+  });
+  await processReceipt(event);
+  const proposal = await request('a', `pacts/${pactId}/resolutions`, {
+    type: 'FULL_REFUND',
+    reason: 'Both parties agree to return the entire captured test payment.',
+    expectedVersion: 0,
+  });
+  expect(proposal.status).toBe(201);
+  const rid = (await proposal.json()).data.id;
+  expect((await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  await approveBoth(rid);
+  const operation = (
+    await (await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).json()
+  ).data;
+  const callsBefore = refundCalls;
+  ambiguousRefund = true;
+  await expect(jobs.payment(operation.id)).rejects.toThrow(ProviderError);
+  await jobs.payment(operation.id);
+  await jobs.payment(operation.id);
+  expect(refundCalls).toBe(callsBefore + 1);
+  const stored = (
+    await db.query('SELECT status FROM paypal_transactions WHERE id=$1', [operation.id])
+  ).rows[0];
+  expect(stored.status).toBe('NEEDS_RECONCILIATION');
+  const tx = (await db.query('SELECT version FROM transactions WHERE pact_id=$1', [pactId]))
+    .rows[0];
+  const input = {
+    requestId: crypto.randomUUID(),
+    expectedStatus: 'NEEDS_RECONCILIATION',
+    expectedTransactionVersion: tx.version,
+    providerId: refundId,
+    reason: 'Confirm the completed full refund from authoritative Sandbox readback.',
+  };
+  expect((await request('b', `operations/${operation.id}/reconcile`, input)).status).toBe(403);
+  vi.stubEnv('PACT_OPERATOR_SUBJECTS', `security-${group}-a`);
+  expect(
+    (
+      await request('a', `operations/${operation.id}/reconcile`, {
+        ...input,
+        providerId: 'MISMATCH',
+      })
+    ).status,
+  ).toBe(409);
+  expect((await request('a', `operations/${operation.id}/reconcile`, input)).status).toBe(201);
+  expect((await request('a', `operations/${operation.id}/reconcile`, input)).status).toBe(201);
+  const p = await detail();
+  expect(p.transaction.refunded_minor).toBe('2550');
+  expect(p.transaction.state).toBe('COMPLETED');
+  expect(refundCalls).toBe(callsBefore + 1);
+  expect(
+    p.audit.some((a: { event_type: string }) => a.event_type === 'PAYPAL_OPERATION_RECONCILED'),
+  ).toBe(true);
+  ambiguousRefund = false;
 });

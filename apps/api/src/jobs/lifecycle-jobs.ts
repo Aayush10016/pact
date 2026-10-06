@@ -2,9 +2,11 @@ import { Injectable, Inject, ConflictException, ForbiddenException } from '@nest
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { groundedAssessmentSchema } from '@pact/types';
-import { Database, audit } from '../database/database.module';
+import { Database, audit, notify } from '../database/database.module';
 import { evidenceSnapshot } from '../assessments/assessments.module';
-import { R2Storage } from '../evidence/storage';
+import { EvidenceStorage } from '../evidence/storage';
+import { EvidenceScanner } from '../evidence/scanner';
+import { UnrecoverableError } from 'bullmq';
 import { PayPalProvider, ProviderError, minorAmount } from '../payments/paypal.provider';
 export function confirmAmount(
   amount: { currency_code: string; value: string } | undefined,
@@ -18,8 +20,9 @@ export function confirmAmount(
 export class LifecycleJobs {
   constructor(
     @Inject(Database) readonly db: Database,
-    @Inject(R2Storage) readonly storage: R2Storage,
+    @Inject(EvidenceStorage) readonly storage: EvidenceStorage,
     @Inject(PayPalProvider) readonly paypal: PayPalProvider,
+    @Inject(EvidenceScanner) readonly scanner: EvidenceScanner,
   ) {}
   async process(kind: string, id: string) {
     if (kind === 'EVIDENCE') return this.evidence(id);
@@ -52,10 +55,44 @@ export class LifecycleJobs {
         [id],
       )
     ).rows[0];
-    if (!v || v.state === 'READY') return;
+    if (!v || v.purged_at || (v.state === 'READY' && v.scan_state === 'CLEAN')) return;
+    if (v.scan_state === 'INFECTED') throw new UnrecoverableError('MALWARE_DETECTED');
     const bytes = await this.storage.read(v.object_key);
     if (createHash('sha256').update(bytes).digest('hex') !== v.content_sha256)
       throw new Error('EVIDENCE_INTEGRITY_FAILED');
+    let verdict: 'CLEAN' | 'INFECTED';
+    try {
+      verdict = await this.scanner.scan(bytes);
+    } catch {
+      await this.db.transaction(async (db) => {
+        await db.query(
+          "UPDATE evidence_versions SET scan_state='ERROR',state='FAILED',failure_code='SCANNER_UNAVAILABLE',updated_at=now() WHERE id=$1",
+          [id],
+        );
+        await audit(db, v.pact_id, null, 'EVIDENCE_SCAN_FAILED', { versionId: id });
+        await notify(db, v.pact_id, 'EVIDENCE_SCAN_FAILED');
+      });
+      throw new Error('SCANNER_UNAVAILABLE');
+    }
+    await this.db.transaction(async (db) => {
+      await db.query(
+        "UPDATE evidence_versions SET scan_state=$2,scanned_at=now(),state=CASE WHEN $2='INFECTED' THEN 'FAILED' ELSE state END,failure_code=CASE WHEN $2='INFECTED' THEN 'MALWARE_DETECTED' ELSE NULL END,updated_at=now() WHERE id=$1",
+        [id, verdict],
+      );
+      await audit(
+        db,
+        v.pact_id,
+        null,
+        verdict === 'CLEAN' ? 'EVIDENCE_SCAN_CLEAN' : 'EVIDENCE_QUARANTINED',
+        { versionId: id },
+      );
+    });
+    if (verdict === 'INFECTED') {
+      await this.db.transaction(async (db) => {
+        await notify(db, v.pact_id, 'EVIDENCE_QUARANTINED');
+      });
+      throw new UnrecoverableError('MALWARE_DETECTED');
+    }
     const result = z
       .object({ data: z.object({ text: z.string().min(1).max(10000) }) })
       .parse(await this.ai('/v1/extract', Buffer.from(bytes), v.mime_type));
@@ -79,6 +116,22 @@ export class LifecycleJobs {
     const known = a.input_snapshot.evidence.map((e: { id: string }) => e.id) as string[];
     const required = a.input_snapshot.commitments.map((c: { id: string }) => c.id) as string[];
     const value = parsed.data;
+    const sources = new Map<string, string>(
+      a.input_snapshot.evidence.map((e: { id: string; content: string }) => [e.id, e.content]),
+    );
+    for (const commitment of value.commitments) {
+      if (
+        commitment.citations.some(
+          (c) =>
+            !commitment.evidenceIds.includes(c.evidenceId) ||
+            !sources.get(c.evidenceId)?.includes(c.quote),
+        ) ||
+        (commitment.claim &&
+          !commitment.citations.some((c) => c.quote.includes(commitment.claim))) ||
+        (commitment.status !== 'UNCLEAR' && !commitment.citations.length)
+      )
+        throw new Error('AI_CITATION_INVALID');
+    }
     if (
       value.commitments.length !== required.length ||
       new Set(value.commitments.map((c) => c.commitmentId)).size !== required.length ||
@@ -120,7 +173,17 @@ export class LifecycleJobs {
         .rows[0];
       const op = (await db.query('SELECT * FROM paypal_transactions WHERE id=$1 FOR UPDATE', [id]))
         .rows[0];
-      if (['PROVIDER_ACCEPTED', 'CONFIRMED', 'CANCELLED', 'FAILED'].includes(op.status))
+      // A crashed or ambiguous attempt requires readback, never another financial POST.
+      if (
+        [
+          'EXECUTING',
+          'NEEDS_RECONCILIATION',
+          'PROVIDER_ACCEPTED',
+          'CONFIRMED',
+          'CANCELLED',
+          'FAILED',
+        ].includes(op.status)
+      )
         return null;
       if (!['ACTIVE', 'DISPUTED'].includes(p.status)) throw new ConflictException('Pact closed');
       const tx = (
@@ -259,6 +322,10 @@ export class LifecycleJobs {
             : 'FAILED',
         ],
       );
+      await this.db.transaction(async (db) => {
+        await audit(db, p.id, op.actor_id, 'PAYMENT_RECONCILIATION_REQUIRED', { operationId: id });
+        await notify(db, p.id, 'PAYMENT_RECONCILIATION_REQUIRED');
+      });
       throw e;
     }
   }
@@ -319,6 +386,27 @@ export class LifecycleJobs {
           captureId = capture.id;
           kind = 'CAPTURED';
         }
+      }
+    }
+    if (event.event_type === 'PAYMENT.CAPTURE.DENIED' && resource.id) {
+      const capture = await this.paypal.getCapture(resource.id);
+      const orderId = capture.supplementary_data?.related_ids?.order_id;
+      if (capture.id !== resource.id || capture.status !== 'DECLINED' || !orderId)
+        throw new Error('Declined capture requires authoritative readback');
+      const tx = (await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [orderId]))
+        .rows[0];
+      if (tx) {
+        const order = await this.paypal.getOrder(orderId);
+        if (
+          order.id !== orderId ||
+          !order.purchase_units?.some(
+            (u) => u.custom_id === tx.id && u.payments?.captures?.some((c) => c.id === capture.id),
+          )
+        )
+          throw new Error('Declined capture ownership mismatch');
+        confirmAmount(capture.amount, tx.amount_minor, tx.currency);
+        transactionId = tx.id;
+        kind = 'DECLINED';
       }
     }
     if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED' && resource.id) {
@@ -426,6 +514,18 @@ export class LifecycleJobs {
             await audit(db, p.id, null, 'FINANCIAL_ACTION_EXECUTED', { operationId: refundOpId });
           }
         }
+        if (kind === 'DECLINED' && ['CREATED', 'AUTHORIZED'].includes(tx.state)) {
+          await db.query(
+            "UPDATE transactions SET state='FAILED',version=version+1,updated_at=now() WHERE id=$1",
+            [tx.id],
+          );
+          await db.query(
+            "UPDATE paypal_transactions SET status='FAILED',failure_code='PROVIDER_DECLINED',updated_at=now() WHERE transaction_id=$1 AND operation='CAPTURE' AND status<>'CONFIRMED'",
+            [tx.id],
+          );
+          await audit(db, p.id, null, 'PAYMENT_DECLINED', { transactionId: tx.id });
+          await notify(db, p.id, 'PAYMENT_DECLINED');
+        }
         if (kind === 'RECONCILIATION') {
           await db.query("UPDATE transactions SET state='FAILED',updated_at=now() WHERE id=$1", [
             tx.id,
@@ -441,9 +541,25 @@ export class LifecycleJobs {
     });
   }
   async failed(kind: string, id: string) {
+    if (kind === 'EVIDENCE' || kind === 'ASSESSMENT') {
+      const reference = (
+        await this.db.query(
+          kind === 'EVIDENCE'
+            ? 'SELECT e.pact_id FROM evidence_versions v JOIN evidence e ON e.id=v.evidence_id WHERE v.id=$1'
+            : 'SELECT pact_id FROM ai_analyses WHERE id=$1',
+          [id],
+        )
+      ).rows[0];
+      if (reference)
+        await this.db.transaction(async (db) => {
+          const event = kind === 'EVIDENCE' ? 'EVIDENCE_PROCESSING_FAILED' : 'ASSESSMENT_FAILED';
+          await audit(db, reference.pact_id, null, event, { resourceId: id });
+          await notify(db, reference.pact_id, event);
+        });
+    }
     if (kind === 'EVIDENCE')
       await this.db.query(
-        "UPDATE evidence_versions SET state='FAILED',failure_code='EXTRACTION_UNAVAILABLE',updated_at=now() WHERE id=$1 AND state<>'READY'",
+        "UPDATE evidence_versions SET state='FAILED',failure_code=COALESCE(failure_code,'EXTRACTION_UNAVAILABLE'),updated_at=now() WHERE id=$1 AND state<>'READY'",
         [id],
       );
     if (kind === 'ASSESSMENT')
