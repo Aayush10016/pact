@@ -7,3 +7,8 @@ saveExact: true
 allowBuilds:
   esbuild: true
   msgpackr-extract: false
+
+overrides:
+  '@clerk/backend': 3.22.0
+  '@clerk/shared': 4.38.0
+  '@clerk/react': 6.17.5
