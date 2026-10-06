@@ -1,0 +1,97 @@
+name: pact
+services:
+  postgres:
+    image: postgres:17.7-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pact}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pact_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-pact}
+    ports: ['127.0.0.1:${POSTGRES_PORT:-55432}:5432']
+    volumes: ['postgres_data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  redis:
+    image: redis:7.4.7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['127.0.0.1:6379:6379']
+    volumes: ['redis_data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  migrate:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/node.Dockerfile
+    command: ['node', 'scripts/migrate.mjs']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:-pact_local_only}@postgres:5432/${POSTGRES_DB:-pact}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/node.Dockerfile
+    command: ['node', 'apps/api/dist/main.js']
+    environment:
+      NODE_ENV: development
+      API_PORT: 4000
+      WEB_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:-pact_local_only}@postgres:5432/${POSTGRES_DB:-pact}
+      REDIS_URL: redis://redis:6379
+    ports: ['127.0.0.1:4000:4000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/node.Dockerfile
+      target: web
+    ports: ['127.0.0.1:3000:3000']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  ai:
+    build:
+      context: apps/ai
+      dockerfile: Dockerfile
+    ports: ['127.0.0.1:8000:8000']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres_data:
+  redis_data:

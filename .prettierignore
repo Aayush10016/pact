@@ -1,0 +1,15 @@
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+dist/
+**/dist/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+.env*
+pnpm-lock.yaml
+*.tsbuildinfo
+playwright-report/
+test-results/
