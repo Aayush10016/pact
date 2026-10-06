@@ -45,7 +45,14 @@ export function WorkspaceView() {
               2 <span>/ 3</span>
             </strong>
           </div>
-          <div className="progress-track" aria-label="2 of 3 milestones delivered">
+          <div
+            className="progress-track"
+            role="progressbar"
+            aria-label="Milestones delivered"
+            aria-valuemin={0}
+            aria-valuemax={3}
+            aria-valuenow={2}
+          >
             <span style={{ width: '66.66%' }} />
           </div>
           <p className="muted">Illustrative progress, pending your review.</p>

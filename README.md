@@ -105,3 +105,5 @@ Redis supports jobs, never the authoritative financial state. Evidence bodies be
 The brand pairs Source Serif 4 with Manrope and IBM Plex Mono. Warm paper, forest green,
 copper, semantic status text, square-edged records, and modest 6px control radii keep the
 interface human and precise. Fonts are packaged locally: builds require no Google Fonts request.
+
+Docker host ports can be overridden with WEB_PORT, API_HOST_PORT, and AI_PORT when local services already occupy the defaults.
