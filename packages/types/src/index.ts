@@ -72,3 +72,5 @@ export const draftSchema = z
   })
   .strict();
 export type PactDraft = z.infer<typeof draftSchema>;
+
+export * from './lifecycle';

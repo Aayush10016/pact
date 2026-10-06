@@ -76,3 +76,63 @@ Included: README, AGENTS, PACT_SPEC, ARCHITECTURE, SECURITY, DESIGN_SYSTEM, CONT
 No outstanding user decisions are required for Phase 1.
 
 Local container validation used host ports 13000 (web), 14000 (API), and 18000 (AI), leaving native previews on their normal ports. All five long-running containers are healthy; the migration exited with code 0. The final local browser rerun passed both timed-out tests without changing assertions or adding retries to CI.
+
+# Phase 2 / validation record — 2026-10-06
+
+Status: implemented and locally validated; live provider lifecycle proof is outstanding.
+The approved Phase 1 main branch remains unchanged. Work is on `codex/phase2-lifecycle`.
+Authenticated GitHub identity was checked as exactly `Aayush10016` before each push.
+
+| Check                                     | Result                                            |
+| ----------------------------------------- | ------------------------------------------------- |
+| Reproducible locked installation          | Passed                                            |
+| Dependency audit, Vitest 4.1.11           | No known vulnerabilities                          |
+| Formatting / ESLint / TypeScript          | Passed                                            |
+| Unit tests                                | 18 passed                                         |
+| PostgreSQL / Redis integration            | 14 passed                                         |
+| FastAPI / extraction / NVIDIA contract    | 12 passed                                         |
+| Python Ruff                               | Passed                                            |
+| Production Next.js / NestJS build         | Passed                                            |
+| Desktop/mobile browser and accessibility  | 22 passed                                         |
+| Docker configuration, build, startup      | Passed; five services healthy, migration exited 0 |
+| Earlier independent branch CI             | All three jobs passed at 3f5245a, run 37492839708 |
+| Actual Clerk/R2/Nemotron/PayPal lifecycle | NOT RUN: provider settings absent                 |
+
+The 14 integration tests use real PostgreSQL, Redis and application services. The eight security
+workflow tests isolate identity, object storage, model HTTP and PayPal with test-only doubles;
+they verify internal authorization/accounting and do not prove external provider compatibility.
+Both agreed delivery (no refund) and dispute (partial refund) paths require distinct persisted
+approvals. Tests cover foreign-user reads/invitations/uploads/downloads, uploader-only versions,
+immutable evidence/approval fields, stale consent, AI's lack of financial authority, duplicate
+execute/webhook handling, provider-readback ownership, and rollback when workers are disabled.
+Financial confirmation comes from a verified inbox and provider facts, never an accepted API call.
+
+Python coverage includes provider timeout/unconfigured behavior, structured output validation,
+unknown/unsupported citations, prompt boundaries, insufficient-evidence confidence limits, and
+bounded TXT/PDF/DOCX parsing. One upstream Starlette/AnyIO deprecation warning remains.
+No tests send real financial requests. URL ingestion and image OCR are disabled.
+
+Browser checks cover the landing page, labeled preview workspace/draft/detail, about page,
+private unavailable state and sign-in/sign-up across desktop/mobile. Automated WCAG checks found
+no violations in those states. Authenticated live UI behavior still needs two configured Clerk
+accounts and actual provider records; it was not falsely substituted with a demo login.
+
+The original landing source, logo and global style sheet have no changes from 4bea598.
+Figma's approved detail frame 6:29, tokens and typography were retrieved and compared against
+the preserved component system. New forms/actions remain inside existing Pact tabs. Decisions
+show exact amount/currency/consequence; approve/reject have equal styling. No global redesign.
+
+## Live gates still required in Phase 2
+
+Configure the ignored local environment with Clerk keys/issuer, private R2 bucket credentials,
+NVIDIA Nemotron key/model, and PayPal Sandbox merchant credentials/webhook ID. Register a public
+HTTPS webhook and use separate Sandbox buyer/merchant accounts. Execute the happy and dispute
+paths in docs/PHASE_2.md, with real uploaded evidence, real NIM output, real consent, a real refund,
+and officially verified delivery/readback. Measure model behavior before describing confidence
+as calibrated. Until then this is a draft integration implementation, not a completed release.
+
+## Phase 3 work
+
+Operator reconciliation, production financial review, notification delivery, malware scanning,
+image OCR, calibrated evidence evaluations, retention controls, backup/restore drills,
+monitoring integration and deployment hardening. These do not replace the missing Phase 2 gates.

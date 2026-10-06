@@ -30,10 +30,20 @@ def test_health_and_provider_capabilities():
     assert client.get("/v1/providers").json()["data"]["enabled"] is False
 
 
-def test_unimplemented_reasoning_is_explicit():
-    response = client.post("/v1/assessments", json=request.model_dump())
-    assert response.status_code == 501
-    assert client.post("/v1/assessments", json={}).status_code == 422
+def test_unavailable_reasoning_is_explicit(monkeypatch):
+    monkeypatch.setenv("AI_SERVICE_KEY", "test-service-key")
+    response = client.post(
+        "/v1/assessments",
+        json=request.model_dump(),
+        headers={"x-pact-service-key": "test-service-key"},
+    )
+    assert response.status_code == 503
+    assert (
+        client.post(
+            "/v1/assessments", json={}, headers={"x-pact-service-key": "test-service-key"}
+        ).status_code
+        == 422
+    )
     with pytest.raises(ProviderUnavailable):
         asyncio.run(NvidiaNimProvider().assess(request))
 

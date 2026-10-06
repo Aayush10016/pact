@@ -36,3 +36,14 @@ Money uses integer minor units with explicit currency; Phase 1 currencies all ha
 
 Use calm, specific, balanced language. Prefer “Needs resolution” to assigning blame.
 Use “No assessment generated” to a fabricated result. Show status in text as well as color.
+
+## Phase 2 continuation
+
+The earlier sections record the approved foundation scope. Phase 2 now connects verified
+identity, persistent agreements, private evidence, advisory NVIDIA Nemotron reasoning,
+versioned human decisions and PayPal Sandbox. The approved frontend identity is preserved.
+Pact lifecycle, payment confirmation and financial attempt progress are separate states.
+There is no auto-approval, AI financial authority, public evidence bucket or production money mode.
+External credentials and the real happy/dispute lifecycle validation remain required release
+gates; implemented adapters and isolated provider-contract tests do not satisfy those gates.
+See docs/PHASE_2.md and docs/VALIDATION.md for actual behavior, configuration and limits.

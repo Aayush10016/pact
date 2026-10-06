@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+if (existsSync('../../.env')) process.loadEnvFile('../../.env');
 import type { NextConfig } from 'next';
 const config: NextConfig = {
   poweredByHeader: false,

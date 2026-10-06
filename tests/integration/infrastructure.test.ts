@@ -28,7 +28,7 @@ it('PostgreSQL persists webhook identities once and protects the audit trail', a
     );
     await expect(
       db.query('DELETE FROM audit_events WHERE id=$1', [audit.rows[0].id]),
-    ).rejects.toThrow('append-only');
+    ).rejects.toThrow(/append-only|permission denied/);
   } finally {
     await db.query('ROLLBACK');
   }

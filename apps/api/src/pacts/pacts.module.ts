@@ -9,6 +9,9 @@ import {
   Post,
 } from '@nestjs/common';
 import { demoPacts } from '@pact/shared';
+import { LifecycleController } from './lifecycle.controller';
+import { LifecycleService } from './lifecycle.service';
+import { AuthModule } from '../auth/auth.module';
 import { draftSchema } from '@pact/types';
 @Controller('v1/demo/pacts')
 export class DemoPactsController {
@@ -26,5 +29,10 @@ export class DemoPactsController {
     return { data: parsed.data, meta: { persisted: false, paymentEnabled: false } };
   }
 }
-@Module({ controllers: [DemoPactsController] })
+@Module({
+  imports: [AuthModule],
+  controllers: [DemoPactsController, LifecycleController],
+  providers: [LifecycleService],
+  exports: [LifecycleService],
+})
 export class PactsModule {}
