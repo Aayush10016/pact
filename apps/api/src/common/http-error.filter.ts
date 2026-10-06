@@ -7,6 +7,18 @@ export class HttpErrorFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<ServerResponse>();
     response.statusCode = status;
     response.setHeader('Content-Type', 'application/json');
-    response.end(JSON.stringify({ error: { code: status, message: status >= 500 ? 'This service is not available yet.' : exception instanceof HttpException ? exception.message : 'Request failed.' } }));
+    response.end(
+      JSON.stringify({
+        error: {
+          code: status,
+          message:
+            status >= 500
+              ? 'This service is not available yet.'
+              : exception instanceof HttpException
+                ? exception.message
+                : 'Request failed.',
+        },
+      }),
+    );
   }
 }

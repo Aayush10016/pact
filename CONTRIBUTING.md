@@ -4,7 +4,7 @@ Read the product, architecture, security and design docs. Keep changes scoped an
 concrete before/after behavior. For financial work include failure/retry and unauthorized-path tests.
 
 Use Node 24.18, pnpm 11.20, Python 3.11+. Install frozen dependencies, build shared packages,
-then run the validation commands in README. Python dependencies use exact direct version pins.
+then run the validation commands in README. Python dependencies use a full pinned lock snapshot.
 Commit the pnpm lockfile when dependencies change. Create branches with `codex/` prefix.
 
 Do not edit deployed/applied migrations; add the next numbered file. Document every external
@@ -14,3 +14,5 @@ Avoid meaningless tests that mirror CSS. Test domain rules, provider contracts, 
 Run lint, strict type checks, unit/service tests and builds for relevant changes. Browser tests
 cover key workflows and accessibility on desktop and mobile. Infrastructure tests require live
 PostgreSQL and Redis; CI supplies both. Record limitations instead of claiming unrun checks pass.
+
+After intentional Python dependency changes, refresh `apps/ai/requirements.lock.txt` from a clean environment and run lint/tests.

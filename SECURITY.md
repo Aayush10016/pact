@@ -15,19 +15,19 @@ Unit/HTTP tests cover illegal state transitions and unauthorized financial execu
 
 ## Threats to address before Phase 2
 
-* Clerk JWT verification (issuer/audience/expiry), party authorization, session handling and rate limiting.
-* Cross-Pact IDOR checks on every evidence, approval, transaction, and resolution association.
-* Resolution version changes invalidate previous approvals. Derive approvals from locked server records.
-* Payment requests need stable idempotency keys, durable attempts, reconciliation, and verified webhooks.
-* PayPal signature verification must use official APIs/certificate requirements; unverified events cannot
+- Clerk JWT verification (issuer/audience/expiry), party authorization, session handling and rate limiting.
+- Cross-Pact IDOR checks on every evidence, approval, transaction, and resolution association.
+- Resolution version changes invalidate previous approvals. Derive approvals from locked server records.
+- Payment requests need stable idempotency keys, durable attempts, reconciliation, and verified webhooks.
+- PayPal signature verification must use official APIs/certificate requirements; unverified events cannot
   change state. Persist receipts once, retry safely, and distinguish received from processed.
-* Prompt injection in evidence: treat content as untrusted data; constrain output; require exact citations.
+- Prompt injection in evidence: treat content as untrusted data; constrain output; require exact citations.
   AI cannot invoke financial tools and should never receive PayPal credentials.
-* Uploads: private R2 buckets, signed short-lived URLs, size/type validation, malware scan,
+- Uploads: private R2 buckets, signed short-lived URLs, size/type validation, malware scan,
   immutable hash/version records, no server-side arbitrary URL fetch without SSRF controls.
-* Privacy: redact credentials, bodies, financial identifiers and personal evidence from logs/errors.
+- Privacy: redact credentials, bodies, financial identifiers and personal evidence from logs/errors.
   Add retention/deletion policies and consent before accepting production evidence.
-* Deployment: TLS, CSP, scoped CORS, mature auth, least-privilege database roles, backup restores,
+- Deployment: TLS, CSP, scoped CORS, mature auth, least-privilege database roles, backup restores,
   monitoring, dependency review, service authentication, and network-isolated AI.
 
 ## Secrets

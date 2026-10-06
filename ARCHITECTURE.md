@@ -19,12 +19,12 @@ Only NestJS will own authorized financial mutations in later phases.
 
 ## Monorepo
 
-* apps/web: App Router pages and interaction components; sample fixtures from shared.
-* apps/api: health, auth, pacts, and payments modules; jobs define stable queue contracts.
-* apps/ai: Pydantic schemas, provider protocol, HTTP skeleton and provider validation.
-* packages/types: strict wire schemas and TypeScript interfaces.
-* packages/shared: sample fixtures, amount formatting, state machine and approval rules.
-* packages/config: TypeScript defaults. No distributed monolith or premature Turborepo.
+- apps/web: App Router pages and interaction components; sample fixtures from shared.
+- apps/api: health, auth, pacts, and payments modules; jobs define stable queue contracts.
+- apps/ai: Pydantic schemas, provider protocol, HTTP skeleton and provider validation.
+- packages/types: strict wire schemas and TypeScript interfaces.
+- packages/shared: sample fixtures, amount formatting, state machine and approval rules.
+- packages/config: TypeScript defaults. No distributed monolith or premature Turborepo.
 
 ## Relational model
 
