@@ -121,6 +121,7 @@ const body = {
   ],
 };
 beforeAll(async () => {
+  vi.stubEnv('WORKERS_ENABLED', 'true');
   vi.stubEnv('AI_SERVICE_URL', 'http://ai.test');
   vi.stubEnv('AI_SERVICE_KEY', 'test-only');
   const original = globalThis.fetch;
@@ -260,6 +261,14 @@ it('enforces private evidence membership, association and uploader-only versioni
   expect((await request('a', `pacts/${pactId}/evidence`, file(crypto.randomUUID()))).status).toBe(
     404,
   );
+  vi.stubEnv('WORKERS_ENABLED', 'false');
+  try {
+    expect((await request('a', `pacts/${pactId}/evidence`, file())).status).toBe(503);
+    expect((await detail()).evidence).toHaveLength(0);
+    expect(blobs.size).toBe(0);
+  } finally {
+    vi.stubEnv('WORKERS_ENABLED', 'true');
+  }
   const upload = await request('a', `pacts/${pactId}/evidence`, file());
   expect(upload.status).toBe(201);
   const output = (await upload.json()).data;

@@ -78,6 +78,8 @@ export async function audit(
   );
 }
 export async function enqueue(db: PoolClient, kind: string, resourceId: string, key: string) {
+  if (process.env.WORKERS_ENABLED !== 'true' || !process.env.REDIS_URL)
+    throw new ServiceUnavailableException('Background processing is unavailable.');
   await db.query(
     'INSERT INTO outbox_jobs(kind,resource_id,dedupe_key) VALUES($1,$2,$3) ON CONFLICT(dedupe_key) DO NOTHING',
     [kind, resourceId, key],

@@ -53,7 +53,7 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
   if (status === 'authenticated') return children;
   return (
-    <section className="empty-state" role="status">
+    <section className="loading-state" role="status">
       <p className="eyebrow">YOUR PRIVATE WORKSPACE</p>
       <h1>
         {status === 'loading'
