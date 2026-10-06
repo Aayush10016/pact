@@ -55,21 +55,27 @@ users 1→N notifications. Large content lives in object storage, only metadata 
 
 The initial migration defines these tables, FK constraints, amount/currency checks, chronology
 indexes, and an append-only audit trigger. It is a baseline, not a complete production schema.
-Phase 2 must enforce same-Pact ownership for all cross-entity references, authenticated party
-membership, immutable evidence versions, and least-privilege DB roles before enabling writes.
+Additive Phase 2 migrations and transactional services enforce same-Pact references, authenticated
+party membership, immutable evidence content and restricted runtime writes.
 Evidence snapshot arrays require ownership/FK validation in transactional services.
 
 ## State and authorization
 
-CREATED → AUTHORIZED → CAPTURED → COMPLETED, or CAPTURED → DISPUTED →
-RESOLUTION_PROPOSED → AWAITING_APPROVAL → ACTION_AUTHORIZED → ACTION_EXECUTING → COMPLETED/FAILED.
-Terminal states have no outgoing transition. Invalid edges throw. ACTION_AUTHORIZED requires
-both distinct parties to approve the same resolution. These pure helpers are not permission
-tokens: production orchestration must derive their input from locked persisted records.
+Pact state is separate from money: CREATED becomes ACTIVE after counterparty acceptance;
+ACTIVE can become DISPUTED; an agreed no-action outcome becomes COMPLETED, and a verified
+refund resolves a dispute to RESOLVED. Cancellation is blocked once financial execution begins.
+Transitions require current persisted Pact versions.
+
+Money progresses through CREATED, AUTHORIZED and CAPTURED only from verified provider facts.
+Refund confirmation records refunded minor units and COMPLETED money state. A no-action
+resolution leaves CAPTURED money unchanged. Durable attempt states (QUEUED, EXECUTING,
+PROVIDER_ACCEPTED, CONFIRMED, FAILED, CANCELLED, NEEDS_RECONCILIATION) describe operation
+progress, not authoritative money. The original Phase 1 pure domain helpers remain for their
+contract tests; live orchestration reads locked persisted identity, proposal and approval records.
 
 ## Jobs and consistency (Phase 2)
 
-Use transactional outbox records to connect DB changes to BullMQ. Queue job IDs derive from
+Use transactional outbox records to connect DB changes to BullMQ. Queue job IDs are stable outbox UUIDs; deduplication keys refer to
 immutable evidence-version IDs or verified persisted webhook-event IDs. Workers are retryable.
 Verify webhook signatures before publishing trusted jobs. Atomically claim event processing;
 update payment state and audit in one transaction. Never mark a financial action completed from
@@ -84,5 +90,5 @@ Do not hold a DB transaction open through a long remote call; use an outbox and 
 Next.js on Vercel; NestJS and FastAPI on Railway or equivalent; managed PostgreSQL and Redis;
 R2 for private evidence. No Kubernetes. Internal AI routes require service identity and network
 restriction before deployment. Add pgvector only after retrieval demonstrates a need.
-Structured backend startup logs use Nest's JSON logger. Sentry is a documented Phase 2 integration;
+Structured backend startup logs use Nest's JSON logger. Sentry remains an unimplemented monitoring integration;
 the empty environment placeholder does not imply active telemetry.

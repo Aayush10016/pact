@@ -29,7 +29,7 @@ Live provider/credential lifecycle validation is outstanding. No production-mone
 
 ## Security review checklist
 
-- Clerk JWT verification (issuer/audience/expiry), party authorization, session handling and rate limiting.
+- Clerk JWT verification (issuer/authorized party/expiry), party authorization, session handling and rate limiting.
 - Cross-Pact IDOR checks on every evidence, approval, transaction, and resolution association.
 - Resolution version changes invalidate previous approvals. Derive approvals from locked server records.
 - Payment requests need stable idempotency keys, durable attempts, reconciliation, and verified webhooks.
@@ -49,7 +49,7 @@ Live provider/credential lifecycle validation is outstanding. No production-mone
 `.env` is ignored. `.env.example` contains empty integration fields and clearly disposable local
 database credentials. Never reuse those defaults in deployment. Frontend public variables must
 never contain private keys. Docker contexts exclude env files. CI needs no real integrations.
-The AI container receives no PayPal secrets; the API currently reads only infrastructure config.
+The AI container receives no PayPal secrets; the API receives the configured private identity, storage and Sandbox settings.
 
 ## Reporting
 
