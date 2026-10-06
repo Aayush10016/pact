@@ -1,0 +1,149 @@
+'use client';
+import { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useAuth, UserButton } from '@clerk/nextjs';
+type Session = {
+  status: 'loading' | 'authenticated' | 'signed-out' | 'unavailable';
+  getToken: () => Promise<string | null>;
+};
+const Context = createContext<Session>({ status: 'unavailable', getToken: async () => null });
+function ConfiguredSession({ children }: { children: React.ReactNode }) {
+  const { getToken: clerkToken, isLoaded, isSignedIn } = useAuth();
+  const getToken = useCallback(() => clerkToken(), [clerkToken]);
+  return (
+    <Context.Provider
+      value={{
+        status: !isLoaded ? 'loading' : isSignedIn ? 'authenticated' : 'signed-out',
+        getToken,
+      }}
+    >
+      {children}
+    </Context.Provider>
+  );
+}
+export function SessionProvider({
+  configured,
+  children,
+}: {
+  configured: boolean;
+  children: React.ReactNode;
+}) {
+  return configured ? (
+    <ConfiguredSession>{children}</ConfiguredSession>
+  ) : (
+    <Context.Provider value={{ status: 'unavailable', getToken: async () => null }}>
+      {children}
+    </Context.Provider>
+  );
+}
+export function useSession() {
+  return useContext(Context);
+}
+export function AccountControl() {
+  const { status } = useSession();
+  return status === 'authenticated' ? (
+    <UserButton />
+  ) : (
+    <Link className="text-link" href="/sign-in">
+      Sign in
+    </Link>
+  );
+}
+export function AccessGate({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
+  if (status === 'authenticated') return children;
+  return (
+    <section className="empty-state" role="status">
+      <p className="eyebrow">YOUR PRIVATE WORKSPACE</p>
+      <h1>
+        {status === 'loading'
+          ? 'Checking your session.'
+          : status === 'unavailable'
+            ? 'Identity setup is required.'
+            : 'A shared record starts with you.'}
+      </h1>
+      <p>
+        {status === 'unavailable'
+          ? 'Clerk has not been configured. Private records and financial actions remain unavailable.'
+          : 'Sign in with a verified email to create Pacts and view the agreements you belong to.'}
+      </p>
+      {status === 'signed-out' && (
+        <Link className="button" href="/sign-in">
+          Sign in to Pact
+        </Link>
+      )}
+      <Link className="text-link" href="/preview">
+        Explore the design preview
+      </Link>
+    </section>
+  );
+}
+export function useApi() {
+  const { getToken } = useSession();
+  return useCallback(
+    async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in again to continue.');
+      const headers = new Headers(options.headers);
+      headers.set('authorization', `Bearer ${token}`);
+      if (options.body && !(options.body instanceof FormData))
+        headers.set('content-type', 'application/json');
+      const response = await fetch(`/api/pact/${path}`, { ...options, headers, cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error?.message ?? 'This action could not be completed. Try again.');
+      return result.data as T;
+    },
+    [getToken],
+  );
+}
+export function useResource<T>(path: string) {
+  const api = useApi();
+  const session = useSession();
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (session.status !== 'authenticated') return;
+    setLoading(true);
+    api<T>(path)
+      .then((value) => {
+        if (active) {
+          setData(value);
+          setError('');
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : 'Unable to load this record.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, path, revision, session.status]);
+  return { data, error, loading, reload: useCallback(() => setRevision((r) => r + 1), []) };
+}
+export function ResourceState({
+  error,
+  retry,
+}: {
+  loading: boolean;
+  error: string;
+  retry: () => void;
+}) {
+  return (
+    <section className="empty-state" role={error ? 'alert' : 'status'}>
+      <h2>{error ? 'The record could not load.' : 'Loading your shared record.'}</h2>
+      <p>{error || 'Your private data is being retrieved.'}</p>
+      {error && (
+        <button className="button secondary" onClick={retry}>
+          Try again
+        </button>
+      )}
+    </section>
+  );
+}

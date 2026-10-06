@@ -8,7 +8,7 @@ test('landing, workspace filters, and evidence navigation remain usable', async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.getByRole('link', { name: 'Explore the workspace', exact: true }).click();
+  await page.goto('/preview');
   await expect(page.getByRole('heading', { name: 'Your pacts.', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Needs attention', exact: true }).click();
   await expect(
@@ -28,7 +28,7 @@ test('landing, workspace filters, and evidence navigation remain usable', async 
   );
 });
 test('draft is local and never implies payment or invitation', async ({ page }) => {
-  await page.goto('/workspace/new');
+  await page.goto('/preview/new');
   await page.getByLabel('Pact name', { exact: true }).fill('Fieldwork brand identity');
   await page.getByLabel('Other party’s email', { exact: true }).fill('maya@example.com');
   await page
@@ -50,10 +50,13 @@ test('draft is local and never implies payment or invitation', async ({ page }) 
 });
 for (const route of [
   '/',
-  '/workspace',
-  '/workspace/new',
-  '/workspace/pacts/brand-identity',
+  '/preview',
+  '/preview/new',
+  '/preview/pacts/brand-identity',
   '/about',
+  '/workspace',
+  '/sign-in',
+  '/sign-up',
 ]) {
   test(`accessible foundation ${route}`, async ({ page }) => {
     await page.goto(route);
@@ -66,3 +69,13 @@ for (const route of [
     ).toBe(true);
   });
 }
+
+test('private workspace fails closed when identity is unconfigured', async ({ page }) => {
+  await page.goto('/workspace');
+  await expect(page.getByRole('heading', { name: 'Identity setup is required.' })).toBeVisible();
+  await expect(page.getByText('Illustrative records. No real payments or accounts.')).toHaveCount(
+    0,
+  );
+  await page.goto('/sign-in');
+  await expect(page.getByText('Identity is not configured yet.', { exact: false })).toBeVisible();
+});

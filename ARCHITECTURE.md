@@ -12,23 +12,38 @@ Next.js web → NestJS modular monolith → FastAPI evidence reasoning
                   Background workers
 ```
 
-Phase 1 ships independent working services and contracts, not connected business flows.
-Public HTTP reads are explicit sample resources. Private mutation routes fail closed.
-The AI skeleton can never reach a payment adapter and has no financial credential configuration.
-Only NestJS will own authorized financial mutations in later phases.
+Phase 2 connects the services. Next.js uses a bounded, allowlisted backend proxy and a Clerk
+session token. NestJS alone authorizes Pact membership and financial commands. PostgreSQL is
+the source of truth; Redis/BullMQ transports durable outbox jobs. FastAPI receives only evidence
+and service identity, with no PayPal credentials or financial tools.
 
 ## Monorepo
 
-- apps/web: App Router pages and interaction components; sample fixtures from shared.
-- apps/api: health, auth, pacts, and payments modules; jobs define stable queue contracts.
-- apps/ai: Pydantic schemas, provider protocol, HTTP skeleton and provider validation.
-- packages/types: strict wire schemas and TypeScript interfaces.
-- packages/shared: sample fixtures, amount formatting, state machine and approval rules.
-- packages/config: TypeScript defaults. No distributed monolith or premature Turborepo.
+- apps/web: approved visual system, live private workspace and separately labeled design preview.
+- apps/api: verified identity, persistent lifecycle, evidence, advisory requests, consent and Sandbox payments.
+- apps/ai: bounded extraction, AIProvider protocol, NVIDIA Nemotron and strict grounded output.
+- packages/types: shared strict wire schemas and lifecycle records.
+- packages/shared: integer-money formatting, domain rules and isolated preview fixtures.
+- infrastructure/docker/migrations: additive checksum-protected migrations 001 through 005.
+
+## Phase 2 data and jobs
+
+002 adds verified identities, PARTY_A/PARTY_B, invitations, terms, idempotent creation,
+commitment criteria, lifecycle versions, approval hashes, provider attempts and durable outbox.
+003 adds evidence request deduplication and immutable proposal contents. 004 adds unique remote
+order/capture IDs and webhook processing results. 005 grants a separate restricted runtime role.
+Provider-attempt budget storage is reserved; current assessment budgets use audit events.
+
+Four BullMQ queues process evidence extraction, advisory inference, financial operations and
+verified webhook reconciliation. Stable job/provider IDs and transactional outbox publication
+handle retries. Remote financial calls occur after a locked server-side approval/state recheck;
+in-flight execution prevents proposal/evidence changes. An accepted provider call is not confirmed
+money. Verified events plus official readback establish amount, currency and transaction ownership.
+Ambiguous results block further action and require reconciliation.
 
 ## Relational model
 
-users 1→N parties N→1 pacts; each Pact has one buyer and one seller (unique role).
+users 1→N parties N→1 pacts; each Pact has PARTY_A and PARTY_B (unique role), with a separate payer role.
 pacts 1→N commitments 1→N milestones. pacts 1→N transactions.
 pacts 1→N evidence 1→N evidence_versions; evidence optionally references a commitment.
 pacts 1→N claims, ai_analyses, resolutions, audit_events.

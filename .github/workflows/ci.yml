@@ -1,4 +1,4 @@
-name: Validate Pact foundation
+name: Validate Pact lifecycle
 on:
   push:
   pull_request:
@@ -23,7 +23,9 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 15
     env:
-      DATABASE_URL: postgresql://pact:pact_ci_only@localhost:5432/pact
+      MIGRATION_DATABASE_URL: postgresql://pact:pact_ci_only@localhost:5432/pact
+      DATABASE_URL: postgresql://pact_runtime:pact_runtime_ci_only@localhost:5432/pact
+      APP_DATABASE_PASSWORD: pact_runtime_ci_only
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +35,11 @@ jobs:
         with: { node-version: 24.18.0, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm prepare:packages
+      - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm db:migrate
+      - run: pnpm db:bootstrap
       - run: pnpm test:integration
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium

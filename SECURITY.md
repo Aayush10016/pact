@@ -4,16 +4,30 @@
 
 ## Current boundary
 
-Phase 1 executes no payment, refund, release, cancellation, webhook processing, file upload,
-or vendor inference. The payment adapter throws; the private route rejects requests with 403.
-No user identity is accepted from a fake token. Assessment endpoints return 501.
-The foundation is not ready to handle real financial or personal evidence data.
+Only authenticated Pact members can read private records or evidence. Clerk tokens are verified
+cryptographically and verified primary email is resolved server-side. A Redis budget protects
+verified-user requests; unavailable infrastructure fails closed. Membership and same-Pact links
+are checked in SQL. Client identity, approvals, monetary amounts and AI recommendations do not
+establish authority.
 
-Zod and Pydantic reject extra output fields and invalid confidence/refund ranges. Both
-assessment boundaries reject citations that do not belong to the request's evidence snapshot.
-Unit/HTTP tests cover illegal state transitions and unauthorized financial execution.
+Evidence uses bounded uploads, MIME/header validation, random immutable private object keys,
+checksums and authorized expiring attachment downloads. PDF/DOCX stay quarantined until bounded
+extraction succeeds. No links are fetched from evidence. Image OCR and malware scanning are not
+implemented. Parser limits do not replace a production malware scanner.
 
-## Threats to address before Phase 2
+Both distinct members approve an exact current proposal hash/version and evidence snapshot.
+A revision invalidates consent; in-flight financial execution blocks revisions. Integer money is
+computed on the server. Immutable SQL triggers and runtime privileges prevent alteration of
+approval, audit and evidence content. Provider request IDs are durable and unique.
+
+Only the Sandbox adapter owns PayPal credentials. Verified webhook receipts are deduplicated;
+provider readback checks relationship, amount and currency before confirmed state changes.
+Fake/unverified events cannot enter the financial inbox. AI receives no financial credentials,
+treats evidence as data, and returns strict citations/uncertainty; it cannot call payment tools.
+
+Live provider/credential lifecycle validation is outstanding. No production-money claim is made.
+
+## Security review checklist
 
 - Clerk JWT verification (issuer/audience/expiry), party authorization, session handling and rate limiting.
 - Cross-Pact IDOR checks on every evidence, approval, transaction, and resolution association.
