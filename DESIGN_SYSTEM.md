@@ -78,7 +78,7 @@ Detail timeline moves below content; form guidance moves above fields; mobile na
 Semantic landmarks, one h1, skip link, labels, keyboard actions, 3px focus, screen-reader status,
 WCAG AA automated checks, and reduced-motion support are baseline. Review at 390, 768, 1440px.
 
-Figma has editable desktop/mobile landing layouts and desktop workspace, bound shared controls,
+Figma has editable desktop/mobile landing layouts, desktop workspace, Pact detail, create-Pact layout, and bound shared controls,
 semantic colors and shared type styles. Implementation follows this visual system while adding
 responsive content density and accessible browser behavior. Browser screenshots and test
 results are the implementation QA evidence, not proof of a full production release.
