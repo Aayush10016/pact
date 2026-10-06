@@ -29,5 +29,10 @@ export class DemoPactsController {
     return { data: parsed.data, meta: { persisted: false, paymentEnabled: false } };
   }
 }
-@Module({ imports:[AuthModule], controllers: [DemoPactsController,LifecycleController],providers:[LifecycleService],exports:[LifecycleService] })
+@Module({
+  imports: [AuthModule],
+  controllers: [DemoPactsController, LifecycleController],
+  providers: [LifecycleService],
+  exports: [LifecycleService],
+})
 export class PactsModule {}
