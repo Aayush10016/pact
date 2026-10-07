@@ -75,6 +75,7 @@ export const groundedAssessmentSchema = assessmentSchema.safeExtend({
       z
         .object({
           commitmentId: idSchema,
+          deliverableMatch: z.number().int().min(0).max(100).optional(),
           status: z.enum(['FULFILLED', 'PARTIALLY_FULFILLED', 'UNFULFILLED', 'UNCLEAR']),
           evidenceIds: z.array(idSchema).max(50),
           claim: z.string().max(1000),
@@ -163,5 +164,6 @@ export interface PactRecord {
     created_at: string;
     label?: string;
     reason?: string;
+    actorName?: string;
   }>;
 }

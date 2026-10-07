@@ -52,6 +52,15 @@ class CommitmentExtraction(StrictModel):
 
 
 class CommitmentAssessment(StrictModel):
+    deliverableMatch: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Required advisory artifact-to-deliverable match estimate, separate from "
+        "contractual status. Give a number when cited content is assessable, even if status is "
+        "UNCLEAR; null only when no artifact content can be assessed. A backend resume with "
+        "backend skills and projects can match well despite an undefined acceptance rubric.",
+    )
     commitmentId: str
     status: Literal["FULFILLED", "PARTIALLY_FULFILLED", "UNFULFILLED", "UNCLEAR"]
     evidenceIds: list[str] = Field(max_length=50)

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Protocol
 
 import httpx
@@ -35,7 +36,21 @@ creation commitment. Judge its observable content and suitability for the agreed
 ONLY the expressly stated acceptance criteria. Do not invent requirements for authorship,
 creation history, original work, delivery provenance, or identity unless expressly agreed.
 A generic percentage such as '80% of work done' is not a defined rubric: explain that limitation
-without dismissing an otherwise relevant artifact. Do not confuse confidence with completion
+without dismissing an otherwise relevant artifact. An undefined percentage alone is not
+missing deliverable evidence and must not by itself downgrade a complete relevant artifact.
+Describe that rubric limitation in uncertainty. Give deliverableMatch only when there is cited
+support: an advisory 0-100 estimate of how well the artifact matches the requested deliverable,
+not work-completion percentage, hiring suitability, or confidence. Judge artifact match separately
+from whether every contractual acceptance term can be verified. A relevant artifact can have a
+high deliverableMatch even if an ambiguous acceptance term leaves overall status UNCLEAR.
+A resume does NOT need a statement such as '80% complete' to be a delivered resume. Never
+require such a progress claim unless the agreement explicitly requests a progress report.
+Example: requested backend-developer resume, criteria '80% work done', and an uploaded complete
+Java backend resume: evaluate backend relevance and the actual resume sections. Report the
+undefined percentage as a rubric limitation, not missing progress text in the resume.
+Explain strengths and gaps.
+Use null for deliverableMatch when the artifact cannot be assessed.
+Do not confuse confidence with completion
 percentage, and do not invent an exact completion score. Use human-readable descriptions in
 reasoning and missing evidence rather than internal UUIDs. Explain specific strengths and gaps.
 A party saying work is complete is a CLAIM, not proof. Distinguish claim, observed evidence,
@@ -56,14 +71,69 @@ claim, empty citations and REQUEST_EVIDENCE. Explain the insufficiency in infere
 """
 
 
+ASSESSMENT_TASK = (
+    "Evaluate each supplied artifact as a possible delivered product. First estimate its match "
+    "to the requested deliverable using cited contents. Then separately assess express acceptance "
+    "terms. Do not require internal IDs, authorship provenance, or a percent-complete statement "
+    "unless the agreement explicitly requests them. Return deliverableMatch when cited artifact "
+    "content supports it, even when contractual certainty remains limited. FINAL CHECK: if "
+    "status is UNCLEAR or missingEvidence is nonempty, confidence MUST be <= 0.5. An undefined "
+    "rubric is an agreement clarification in uncertainty, NOT missing evidence or a requirement "
+    "to provide a progress statement. Do not list progress statements or completion percentages "
+    "as missing evidence for a resume deliverable."
+)
+
+
+def exact_source_span(quote: str, source: str) -> str | None:
+    """Restore PDF whitespace only; never change words, punctuation or capitalization."""
+    if quote in source:
+        return quote
+    needle = re.sub(r"\s+", " ", quote).strip()
+    if not needle:
+        return None
+    normalized, starts, ends = [], [], []
+    for match in re.finditer(r"\s+|\S+", source):
+        if match.group().isspace():
+            normalized.append(" ")
+            starts.append(match.start())
+            ends.append(match.end())
+        else:
+            for index in range(match.start(), match.end()):
+                normalized.append(source[index])
+                starts.append(index)
+                ends.append(index + 1)
+    start = "".join(normalized).find(needle)
+    if start < 0:
+        return None
+    return source[starts[start] : ends[start + len(needle) - 1]]
+
+
+def restore_citation_whitespace(output: Assessment, request: AssessmentRequest) -> Assessment:
+    sources = {e.id: e.content for e in request.evidence}
+    data = output.model_dump()
+    for commitment in data["commitments"]:
+        for citation in commitment["citations"]:
+            exact = exact_source_span(citation["quote"], sources.get(citation["evidenceId"], ""))
+            if exact is not None:
+                citation["quote"] = exact
+        if commitment["claim"]:
+            for citation in commitment["citations"]:
+                exact = exact_source_span(commitment["claim"], citation["quote"])
+                if exact is not None:
+                    commitment["claim"] = exact
+                    break
+    return Assessment.model_validate(data)
+
+
 class NvidiaNimProvider:
     def __init__(self, transport=None):
         self.transport = transport
 
     async def assess(self, request: AssessmentRequest) -> Assessment:
-        return Assessment.model_validate(
+        output = Assessment.model_validate(
             await self._complete(request.model_dump(exclude_none=True), Assessment)
         )
+        return restore_citation_whitespace(output, request)
 
     async def extract_commitments(
         self, request: CommitmentExtractionRequest
@@ -90,6 +160,12 @@ class NvidiaNimProvider:
             or "nemotron" not in model.lower()
         ):
             raise ProviderUnavailable("Unsupported NVIDIA endpoint or model")
+        output_schema = schema.model_json_schema()
+        if schema is Assessment:
+            definition = output_schema["$defs"]["CommitmentAssessment"]
+            definition["required"] = list(
+                dict.fromkeys(["deliverableMatch", *definition.get("required", [])])
+            )
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(45.0, connect=5.0), transport=self.transport
         ) as client:
@@ -106,13 +182,17 @@ class NvidiaNimProvider:
                             "type": "json_schema",
                             "json_schema": {
                                 "name": schema.__name__,
-                                "schema": schema.model_json_schema(),
+                                "schema": output_schema,
                                 "strict": True,
                             },
                         },
                         **(
                             {"chat_template_kwargs": {"enable_thinking": False}}
-                            if model == "nvidia/nemotron-3.5-lightning-30b-a3b"
+                            if model
+                            in (
+                                "nvidia/nemotron-3.5-lightning-30b-a3b",
+                                "nvidia/nemotron-3-super-120b-a12b",
+                            )
                             else {}
                         ),
                         "messages": [
@@ -121,7 +201,7 @@ class NvidiaNimProvider:
                                 "role": "user",
                                 "content": json.dumps(
                                     {
-                                        "outputSchema": schema.model_json_schema(),
+                                        "outputSchema": output_schema,
                                         "task": (
                                             "Extract only expressly stated commitments, criteria, "
                                             "deliverables, milestones and deadlines. Quote exact "
@@ -130,7 +210,7 @@ class NvidiaNimProvider:
                                             "becoming a Pact."
                                         )
                                         if schema is CommitmentExtraction
-                                        else "Assess evidence against commitments.",
+                                        else ASSESSMENT_TASK,
                                         "untrustedContext": context,
                                     }
                                 ),
@@ -175,6 +255,10 @@ async def validated_assessment(provider: AIProvider, request: AssessmentRequest)
         ) != len(required):
             raise InvalidAssessment("Assessment does not match requested commitments")
         for commitment in output.commitments:
+            if commitment.deliverableMatch is not None and (
+                not commitment.citations or not commitment.evidenceIds
+            ):
+                raise InvalidAssessment("Match estimate lacks assessable cited evidence")
             if any(
                 associations.get(e) not in (None, commitment.commitmentId)
                 for e in commitment.evidenceIds

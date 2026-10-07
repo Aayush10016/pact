@@ -167,5 +167,9 @@ it('records both members concerns while resolution is open, without moving money
   expect(
     b.audit.find((e: { event_type: string }) => e.event_type === 'PACT_RESOLUTION_CONCERN').reason,
   ).toBe(reason);
+  expect(
+    b.audit.find((e: { event_type: string }) => e.event_type === 'PACT_RESOLUTION_CONCERN')
+      .actorName,
+  ).toContain(' a ');
   expect(a.audit).toEqual(b.audit);
 });

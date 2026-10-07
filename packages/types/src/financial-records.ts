@@ -29,5 +29,6 @@ export interface ActivityRecord {
   created_at: string;
   label: string;
   reason?: string;
+  actorName?: string;
   receipt: ReceiptSummary | null;
 }

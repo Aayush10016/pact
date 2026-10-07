@@ -21,3 +21,11 @@ Provider errors and invalid output cannot authorize financial action. The latest
 Requesting resolution requires a concern of 10–2000 characters and records it for both members. The UI calls the state Resolution requested; the durable internal status remains DISPUTED. Either member can add context, evidence and request another assessment. The request does not open a PayPal dispute or reverse money.
 
 After capture confirmation, either member may propose retaining the payment, a partial refund or a full refund. Both distinct members must approve the exact current proposal, amount, version and evidence snapshot. Rejection leaves review open; revising retires earlier decisions. Only explicit execution after both approvals can submit a refund. An agreed no-action outcome closes the Pact without moving money. Earlier requests without reasons are labeled honestly, never backfilled with invented explanations.
+
+## Artifact matching and PDF citations
+
+Assessments may include a cited advisory deliverableMatch (0-100) independently of contractual status and confidence. Undefined acceptance rubrics can leave status UNCLEAR even when the artifact fits well; they are not evidence that the artifact is missing. Historical assessments without this optional field remain readable. A score requires linked evidence and citations, and never authorizes a financial action.
+
+PDF whitespace can differ from a model quotation. Only whitespace-equivalent quotations are restored to the exact original source span before validation; words, punctuation and case cannot be corrected or invented. Unsupported citations still fail closed. The provider schema explicitly requests a match estimate, with null reserved for unassessable content. The locally verified NVIDIA Super model is selected through NVIDIA_NIM_MODEL; credentials remain local.
+
+Shared resolution activity now includes the requesting member's display name and timestamp. Both members see the same recorded concern. Historical missing reasons remain explicit, and a new concern can be added while review is open.

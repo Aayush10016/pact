@@ -142,3 +142,67 @@ def test_evidence_linked_to_other_commitment_cannot_support_a_conclusion():
 
     with pytest.raises(InvalidAssessment, match="different commitment"):
         asyncio.run(validated_assessment(Output(), AssessmentRequest.model_validate(other)))
+
+
+@pytest.mark.parametrize(
+    "quote,source,expected",
+    [
+        ("Java Backend Development", "Java\nBackend  Development", "Java\nBackend  Development"),
+        ("Delivered REST APIs", "Delivered SOAP APIs", None),
+        ("Java backend", "Java Backend", None),
+        ("API completed!", "API completed?", None),
+    ],
+)
+def test_pdf_citations_restore_only_whitespace(quote, source, expected):
+    from pact_ai.providers import exact_source_span
+
+    assert exact_source_span(quote, source) == expected
+
+
+def test_canonicalized_citations_remain_exact_source_and_reject_invented_words():
+    from pact_ai.providers import restore_citation_whitespace
+    from pact_ai.schemas import Assessment, AssessmentRequest
+
+    original = "Backend developer.\nBuilt REST APIs."
+    req = AssessmentRequest(
+        pactId="p",
+        commitments=[{"id": "c1", "description": "Deliver a backend developer resume."}],
+        evidence=[{"id": "e1", "content": original}],
+    )
+    output = copy.deepcopy(result)
+    output.update(status="FULFILLED", confidence=0.8, missingEvidence=[])
+    c = output["commitments"][0]
+    c.update(
+        status="FULFILLED",
+        claim="Backend developer. Built REST APIs.",
+        citations=[{"evidenceId": "e1", "quote": "Backend developer. Built REST APIs."}],
+        deliverableMatch=90,
+    )
+    fixed = restore_citation_whitespace(Assessment.model_validate(output), req)
+    assert fixed.commitments[0].citations[0].quote == original
+    assert fixed.commitments[0].claim == original
+
+    class Output:
+        async def assess(self, _):
+            return fixed
+
+    assert asyncio.run(validated_assessment(Output(), req)).commitments[0].deliverableMatch == 90
+
+
+def test_match_estimate_requires_cited_content_even_when_contractual_status_is_unclear():
+    from pact_ai.schemas import Assessment
+
+    output = copy.deepcopy(result)
+    output.update(status="UNCLEAR", confidence=0.4)
+    output["commitments"][0].update(status="UNCLEAR", deliverableMatch=85)
+
+    class Output:
+        async def assess(self, _):
+            return Assessment.model_validate(output)
+
+    assert (
+        asyncio.run(validated_assessment(Output(), request)).commitments[0].deliverableMatch == 85
+    )
+    output["commitments"][0].update(claim="", citations=[], evidenceIds=[])
+    with pytest.raises(InvalidAssessment, match="Match estimate lacks"):
+        asyncio.run(validated_assessment(Output(), request))

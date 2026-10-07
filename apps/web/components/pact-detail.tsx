@@ -234,6 +234,9 @@ function PrivateDetail({ id }: { id: string }) {
   );
   const party = p.parties.find((r) => r.user_id === me.data?.id);
   const isPayer = party?.role === p.transaction.payer_role;
+  const resolutionRequest = p.audit.find((a) =>
+    ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN'].includes(a.event_type),
+  );
   const approval = current?.approvals.find((a) => a.user_id === me.data?.id);
   const approved =
     current?.approvals.length === 2 && current.approvals.every((a) => a.decision === 'APPROVED');
@@ -586,6 +589,14 @@ function PrivateDetail({ id }: { id: string }) {
                     {assessment.data.commitments.map((c) => (
                       <article className={styles.card} key={c.commitmentId}>
                         <h3>{p.commitments.find((v) => v.id === c.commitmentId)?.title}</h3>
+                        {c.deliverableMatch !== undefined && (
+                          <p>
+                            <strong>Deliverable match estimate: {c.deliverableMatch}%</strong>
+                            <br />
+                            Advisory fit to the requested deliverable, not a measured completion
+                            percentage. Review the cited support below.
+                          </p>
+                        )}
                         {c.claim && (
                           <p>
                             <strong>Observed evidence</strong>
@@ -627,6 +638,14 @@ function PrivateDetail({ id }: { id: string }) {
                         No additional gaps reported by the model. Review this judgment critically.
                       </p>
                     )}
+                    {assessment.data.status === 'UNCLEAR' &&
+                      !assessment.data.missingEvidence.length && (
+                        <p>
+                          Review the stated uncertainty together and clarify the acceptance
+                          criteria. An unclear agreement criterion does not mean the uploaded
+                          artifact is missing.
+                        </p>
+                      )}
                     <p>
                       Advisory recommendation:{' '}
                       {assessment.data.recommendation.type.toLowerCase().replaceAll('_', ' ')}
@@ -680,6 +699,14 @@ function PrivateDetail({ id }: { id: string }) {
                   <div className="notice">
                     <div>
                       <h3>Why resolution was requested</h3>
+                      {resolutionRequest && (
+                        <p className="field-help">
+                          Recorded by {resolutionRequest.actorName ?? 'a Pact member'} on{' '}
+                          {new Date(resolutionRequest.created_at).toLocaleString()}. A member
+                          requested review; this is not an automatic AI judgment or a PayPal
+                          dispute.
+                        </p>
+                      )}
                       <p>
                         {p.audit.find(
                           (a) =>

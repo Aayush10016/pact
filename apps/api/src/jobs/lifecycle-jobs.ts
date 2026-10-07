@@ -132,6 +132,11 @@ export class LifecycleJobs {
     );
     for (const commitment of value.commitments) {
       if (
+        commitment.deliverableMatch !== undefined &&
+        (!commitment.citations.length || !commitment.evidenceIds.length)
+      )
+        throw new Error('AI_MATCH_ESTIMATE_INVALID');
+      if (
         commitment.evidenceIds.some(
           (e) => associations.get(e) && associations.get(e) !== commitment.commitmentId,
         )

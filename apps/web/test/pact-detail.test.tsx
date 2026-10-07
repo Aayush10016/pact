@@ -230,6 +230,7 @@ it.each(['user-a', 'user-b'])(
           event_type: 'PACT_DISPUTED',
           created_at: '2026-10-07T10:00:00Z',
           reason: 'The delivery needs more backend project detail.',
+          actorName: 'Creator',
         },
       ],
     };
@@ -246,7 +247,53 @@ it.each(['user-a', 'user-b'])(
     await screen.findByRole('heading', { name: unicode });
     fireEvent.click(screen.getByRole('button', { name: 'Resolution' }));
     await screen.findByText('The delivery needs more backend project detail.');
+    expect(screen.getByText(/Recorded by Creator on/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Propose a new resolution version' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Share resolution concern' })).toBeTruthy();
   },
 );
+
+it('separates a grounded deliverable match from contractual confidence and uncertainty', async () => {
+  const assessment = {
+    status: 'UNCLEAR',
+    confidence: 0.4,
+    supportingEvidence: ['debcf79e-eeb1-4bc5-9b2a-14e6c671a74a'],
+    conflictingEvidence: [],
+    missingEvidence: [],
+    reasoningSummary: 'Backend resume supplied.',
+    recommendation: { type: 'REQUEST_EVIDENCE' },
+    commitments: [
+      {
+        commitmentId: 'cfd31df0-276b-40c8-ab08-7ae095d5ce6b',
+        status: 'UNCLEAR',
+        deliverableMatch: 85,
+        evidenceIds: ['debcf79e-eeb1-4bc5-9b2a-14e6c671a74a'],
+        claim: 'Java Backend',
+        inference: 'Matches the backend resume request.',
+        uncertainty: 'The percentage rubric is undefined.',
+        citations: [{ evidenceId: 'debcf79e-eeb1-4bc5-9b2a-14e6c671a74a', quote: 'Java Backend' }],
+      },
+    ],
+  };
+  mount(
+    vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/me')) return Response.json({ data: { id: 'user-a' } });
+      if (url.endsWith('/receipts')) return Response.json({ data: [] });
+      if (url.endsWith('/capabilities')) return Response.json({ data: { workers: true } });
+      return Response.json({
+        data: {
+          ...fixture(),
+          analyses: [
+            { id: 'analysis', state: 'READY', created_at: '2026-10-07T10:00:00Z', assessment },
+          ],
+        },
+      });
+    }),
+  );
+  await screen.findByRole('heading', { name: unicode });
+  fireEvent.click(screen.getByRole('button', { name: 'Assessment' }));
+  await screen.findByText('Deliverable match estimate: 85%');
+  expect(screen.getByText('Confidence in this assessment: 40%')).toBeTruthy();
+  expect(screen.getByText(/An unclear agreement criterion does not mean/)).toBeTruthy();
+});

@@ -21,6 +21,7 @@ type ActivityContext = {
   operation: string | null;
   decision: string | null;
   reason: string | null;
+  actor_name: string | null;
   provider_event: string | null;
   receipt_id: string | null;
   receipt_operation: string | null;
@@ -327,11 +328,13 @@ export class LifecycleService {
       await query(
         `SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title,
           CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN') THEN a.metadata->>'reason' END reason,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN') THEN actor.display_name END actor_name,
           COALESCE(op.operation,CASE WHEN res.proposal->>'type' IN ('FULL_REFUND','PARTIAL_REFUND') THEN 'REFUND' END) operation,
           a.metadata->>'decision' decision,
           COALESCE(a.metadata->>'providerEventType',we.event_type) provider_event,
           final.id receipt_id,final.operation receipt_operation,final.amount_minor,tx.currency,tx.id transaction_id
           FROM audit_events a JOIN pacts p ON p.id=a.pact_id JOIN parties r ON r.pact_id=p.id
+          LEFT JOIN users actor ON actor.id=a.actor_id
           LEFT JOIN paypal_transactions op ON op.id::text=a.metadata->>'operationId'
             AND EXISTS(SELECT 1 FROM transactions ot WHERE ot.id=op.transaction_id AND ot.pact_id=a.pact_id)
           LEFT JOIN resolutions res ON res.id::text=a.metadata->>'resolutionId' AND res.pact_id=a.pact_id
@@ -359,6 +362,7 @@ export class LifecycleService {
       created_at: a.created_at,
       label: activityLabel(a.event_type, a.operation, a.provider_event, a.decision),
       ...(a.reason ? { reason: a.reason } : {}),
+      ...(a.actor_name ? { actorName: a.actor_name } : {}),
       receipt: a.receipt_id
         ? {
             id: a.receipt_operation === 'CAPTURE' ? a.transaction_id : a.receipt_id,
