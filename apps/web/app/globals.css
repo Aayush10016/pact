@@ -492,11 +492,8 @@ em {
   padding-top: 22px;
 }
 .workflow-number {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   color: var(--brand);
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 .workflow-number .mono {
   color: var(--muted);

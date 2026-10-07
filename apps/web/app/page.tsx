@@ -1,14 +1,5 @@
 import Link from 'next/link';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  FileText,
-  LockKeyhole,
-  GitBranch,
-  Scale,
-  CircleCheck,
-} from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, FileText, LockKeyhole, CircleCheck } from 'lucide-react';
 import { Logo } from '../components/logo';
 export default function Home() {
   return (
@@ -144,19 +135,16 @@ export default function Home() {
             {[
               {
                 n: '01',
-                icon: GitBranch,
                 title: 'Make it clear.',
                 body: 'Define the deliverables, milestones, and payment conditions. Both sides know what good looks like.',
               },
               {
                 n: '02',
-                icon: FileText,
                 title: 'Keep the record.',
                 body: 'Connect each delivery, message, and document to the promise it supports. Nothing lost in the thread.',
               },
               {
                 n: '03',
-                icon: Scale,
                 title: 'Find a fair outcome.',
                 body: 'See what the evidence supports. Review a recommendation. People make the final decision.',
               },
@@ -164,7 +152,6 @@ export default function Home() {
               <article key={item.n}>
                 <div className="workflow-number">
                   <span className="mono">{item.n}</span>
-                  <item.icon size={24} strokeWidth={1.4} />
                 </div>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>

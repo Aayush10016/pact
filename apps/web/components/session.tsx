@@ -2,6 +2,7 @@
 import { createContext, useContext, useCallback, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth, UserButton } from '@clerk/nextjs';
+import { WorkspaceIntroduction } from './workspace-introduction';
 type Session = {
   status: 'loading' | 'authenticated' | 'signed-out' | 'unavailable';
   getToken: () => Promise<string | null>;
@@ -52,6 +53,7 @@ export function AccountControl() {
 export function AccessGate({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
   if (status === 'authenticated') return children;
+  if (status === 'signed-out') return <WorkspaceIntroduction />;
   return (
     <section className="loading-state" role="status">
       <p className="eyebrow">YOUR PRIVATE WORKSPACE</p>
@@ -67,11 +69,6 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
           ? 'Clerk has not been configured. Private records and financial actions remain unavailable.'
           : 'Sign in with a verified email to create Pacts and view the agreements you belong to.'}
       </p>
-      {status === 'signed-out' && (
-        <Link className="button" href="/sign-in">
-          Sign in to Pact
-        </Link>
-      )}
       <Link className="text-link" href="/preview">
         Explore the design preview
       </Link>
