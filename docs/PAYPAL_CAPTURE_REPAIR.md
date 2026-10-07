@@ -1,5 +1,10 @@
 # Capture and Unicode repair
 
+This document records the earlier merchant-switch repair. The user subsequently completed one
+new US-app Sandbox capture and full refund. Both now pass real provider readback and have
+private receipts; see [current financial records](FINANCIAL_RECEIPTS.md). The original
+Indian-app Pact remains unchanged and does not inherit the new Pact's payment confirmation.
+
 ## Real failure and preserved records
 
 The affected Pact is `680cedce-65c4-4422-83a2-861cc0694c94`, with transaction

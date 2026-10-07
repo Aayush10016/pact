@@ -11,6 +11,22 @@ import { Database, member, audit } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import { activityLabel } from '../payments/activity-label';
+type ActivityContext = {
+  id: string;
+  pact_id: string;
+  title: string;
+  event_type: string;
+  created_at: Date;
+  operation: string | null;
+  decision: string | null;
+  provider_event: string | null;
+  receipt_id: string | null;
+  receipt_operation: string | null;
+  amount_minor: string;
+  currency: string;
+  transaction_id: string;
+};
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new BadRequestException('Check the request fields.');
@@ -179,12 +195,7 @@ export class LifecycleService {
           [id],
         )
       ).rows;
-      const history = (
-        await db.query(
-          'SELECT id,event_type,created_at FROM audit_events WHERE pact_id=$1 ORDER BY created_at DESC LIMIT 100',
-          [id],
-        )
-      ).rows;
+      const history = await this.activity(user, id, db);
       return {
         ...p,
         parties,
@@ -295,12 +306,53 @@ export class LifecycleService {
       return { status: data.status };
     });
   }
-  async activity(user: Identity) {
-    return (
-      await this.db.query(
-        'SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title FROM audit_events a JOIN pacts p ON p.id=a.pact_id JOIN parties r ON r.pact_id=p.id WHERE r.user_id=$1 ORDER BY a.created_at DESC LIMIT 100',
-        [user.id],
+  async activity(user: Identity, pactId: string | null = null, client?: PoolClient) {
+    const query = (sql: string, values: (string | null)[]) =>
+      client
+        ? client.query<ActivityContext>(sql, values)
+        : this.db.query<ActivityContext>(sql, values);
+    const rows = (
+      await query(
+        `SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title,
+          COALESCE(op.operation,CASE WHEN res.proposal->>'type' IN ('FULL_REFUND','PARTIAL_REFUND') THEN 'REFUND' END) operation,
+          a.metadata->>'decision' decision,
+          COALESCE(a.metadata->>'providerEventType',we.event_type) provider_event,
+          final.id receipt_id,final.operation receipt_operation,final.amount_minor,tx.currency,tx.id transaction_id
+          FROM audit_events a JOIN pacts p ON p.id=a.pact_id JOIN parties r ON r.pact_id=p.id
+          LEFT JOIN paypal_transactions op ON op.id::text=a.metadata->>'operationId'
+            AND EXISTS(SELECT 1 FROM transactions ot WHERE ot.id=op.transaction_id AND ot.pact_id=a.pact_id)
+          LEFT JOIN resolutions res ON res.id::text=a.metadata->>'resolutionId' AND res.pact_id=a.pact_id
+          LEFT JOIN transactions tx ON tx.pact_id=a.pact_id
+          LEFT JOIN LATERAL (SELECT w.event_type FROM audit_events received JOIN paypal_webhook_events w
+            ON w.provider_event_id=received.metadata->>'paypalEventId'
+            WHERE received.pact_id=a.pact_id AND received.event_type='PAYPAL_WEBHOOK_RECEIVED'
+            AND (received.id=a.id OR received.created_at=a.created_at)
+            ORDER BY received.created_at DESC LIMIT 1) we ON true
+          LEFT JOIN paypal_transactions final ON final.transaction_id=tx.id AND final.status='CONFIRMED'
+            AND tx.order_id IS NOT NULL AND tx.capture_id IS NOT NULL
+            AND ((a.event_type='PAYMENT_CAPTURED' AND final.operation='CAPTURE' AND a.metadata->>'transactionId'=tx.id::text)
+              OR (a.event_type='FINANCIAL_ACTION_EXECUTED' AND final.operation='REFUND' AND a.metadata->>'operationId'=final.id::text AND final.paypal_id IS NOT NULL)
+              OR (a.event_type='PAYPAL_OPERATION_RECONCILED' AND a.metadata->>'operationId'=final.id::text
+                AND final.operation IN ('CAPTURE','REFUND') AND final.paypal_id IS NOT NULL))
+          WHERE r.user_id=$1 AND ($2::uuid IS NULL OR p.id=$2) ORDER BY a.created_at DESC,a.id DESC LIMIT 100`,
+        [user.id, pactId],
       )
     ).rows;
+    return rows.map((a) => ({
+      id: a.id,
+      pact_id: a.pact_id,
+      title: a.title,
+      event_type: a.event_type,
+      created_at: a.created_at,
+      label: activityLabel(a.event_type, a.operation, a.provider_event, a.decision),
+      receipt: a.receipt_id
+        ? {
+            id: a.receipt_operation === 'CAPTURE' ? a.transaction_id : a.receipt_id,
+            kind: a.receipt_operation === 'CAPTURE' ? 'payment' : 'refund',
+            amountMinor: a.amount_minor,
+            currency: a.currency,
+          }
+        : null,
+    }));
   }
 }

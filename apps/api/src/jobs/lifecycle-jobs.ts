@@ -483,6 +483,7 @@ export class LifecycleJobs {
         ).rows[0];
         await audit(db, p.id, null, 'PAYPAL_WEBHOOK_RECEIVED', {
           paypalEventId: event.provider_event_id,
+          providerEventType: event.event_type,
         });
         if (kind === 'AUTHORIZED' && tx.state === 'CREATED')
           await db.query(
@@ -547,7 +548,10 @@ export class LifecycleJobs {
           ]);
           await audit(db, p.id, null, 'PAYMENT_RECONCILIATION_REQUIRED', { transactionId: tx.id });
         }
-        await audit(db, p.id, null, 'PAYPAL_STATE_CONFIRMED', { transactionId: tx.id });
+        await audit(db, p.id, null, 'PAYPAL_STATE_CONFIRMED', {
+          transactionId: tx.id,
+          providerEventType: event.event_type,
+        });
       }
       await db.query(
         'UPDATE paypal_webhook_events SET processed_at=now(),processing_status=$2,failure_code=NULL WHERE id=$1',

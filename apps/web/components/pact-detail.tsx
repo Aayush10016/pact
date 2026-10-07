@@ -5,6 +5,7 @@ import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
 import { groundedAssessmentSchema, type PactRecord } from '@pact/types';
 import { formatMoney } from '@pact/shared';
 import { AccessGate, ApiError, useApi, useResource, ResourceState } from './session';
+import { FinancialRecords } from './financial-receipt';
 const sections = ['Commitments', 'Evidence', 'Assessment', 'Resolution'] as const;
 type Capabilities = { storage: boolean; advisory: boolean; paypal: boolean; workers: boolean };
 export function PactDetail({ id }: { id: string }) {
@@ -235,7 +236,10 @@ function PrivateDetail({ id }: { id: string }) {
             })}
           </p>
           <p className="muted">
-            Payment: {p.transaction.state.toLowerCase()} · {p.transaction.currency}
+            {p.transaction.state === 'COMPLETED' && BigInt(p.transaction.refunded_minor ?? '0') > 0n
+              ? 'Payment captured · Refund completed'
+              : `Payment: ${p.transaction.state.toLowerCase()}`}{' '}
+            · {p.transaction.currency}
           </p>
         </div>
       </div>
@@ -328,6 +332,10 @@ function PrivateDetail({ id }: { id: string }) {
                 </div>
                 <h2>Payment follows authorization.</h2>
                 <p>{p.payment_condition}</p>
+                <FinancialRecords
+                  key={`${p.version}-${p.transaction.state}-${p.transaction.refunded_minor}`}
+                  pactId={id}
+                />
                 <div className="notice">
                   <LockKeyhole size={19} />
                   <p>
@@ -362,7 +370,12 @@ function PrivateDetail({ id }: { id: string }) {
                     </button>
                   </div>
                 ) : (
-                  <p className="muted">Only the Pact’s payer can initiate or capture checkout.</p>
+                  <p className="muted">
+                    {!['CREATED', 'AUTHORIZED'].includes(p.transaction.state) ||
+                    p.status !== 'ACTIVE'
+                      ? 'Payment actions are closed. View confirmed results in Financial records.'
+                      : 'Only the Pact’s payer can initiate or capture checkout.'}
+                  </p>
                 )}
                 {operation && (
                   <div className="notice">
@@ -776,7 +789,7 @@ function PrivateDetail({ id }: { id: string }) {
               <li key={a.id}>
                 <span className="timeline-dot done" />
                 <div>
-                  <strong>{a.event_type.replaceAll('_', ' ').toLowerCase()}</strong>
+                  <strong>{a.label ?? a.event_type.replaceAll('_', ' ').toLowerCase()}</strong>
                   <p>{new Date(a.created_at).toLocaleString()}</p>
                 </div>
               </li>

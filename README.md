@@ -4,7 +4,9 @@
 
 Phase 3 preserves the approved interface and adds free local private storage, malware scanning,
 OCR, evidence-grounded NVIDIA reasoning, operator reconciliation and recovery tooling. It is a
-development product; the real two-party PayPal lifecycle remains a release gate. See
+development product; real Sandbox capture and a full refund are now confirmed, with private
+payment/refund receipts. Production readiness and real ambiguous-operation reconciliation
+remain separate gates. See
 [Phase 3 setup, actual provider proof and blockers](docs/PHASE_3.md).
 
 ## Run locally
@@ -58,6 +60,8 @@ See [Phase 2 setup and live gates](docs/PHASE_2.md), [security](SECURITY.md),
 [architecture](ARCHITECTURE.md), [design](DESIGN_SYSTEM.md), and [validation](docs/VALIDATION.md).
 See [capture and Unicode investigation](docs/PAYPAL_CAPTURE_REPAIR.md) for the
 merchant-switch failure, preserved original order, refresh repair, and real-test boundaries.
+See [confirmed receipts, Activity semantics and sign-in](docs/FINANCIAL_RECEIPTS.md) for
+authoritative ID sources, private receipt routes and focused product completion.
 
 ```sh
 pnpm format:check

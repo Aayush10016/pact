@@ -1,20 +1,22 @@
 # Phase 3: local security and provider validation
 
-Phase 3 implementation is available, but the release gate remains open. Real authenticated
-two-party PayPal capture/refund and signed financial webhook receipts have not been observed.
+Phase 3 implementation is available. The user completed a real Sandbox capture and full refund;
+their stored confirmed operations and VERIFIED/PROCESSED financial webhook records now match
+official PayPal readback and both private receipts were opened in the real authenticated browser.
+Production readiness and real ambiguous-operation reconciliation remain separate gates.
 Provider contract doubles are explicitly separate from real provider validation below.
 
 ## Verified locally on 7 October 2026
 
-| Provider                       | Result                            | Actual proof and boundary                                                                                                                                                                                                                    |
-| ------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Clerk                          | BLOCKED: interactive lifecycle    | Official CLI login/link/doctor and backend key/JWKS connectivity pass for app_3KKX2pTNsmtO0pxVeOwtGPSZubN. Sign-in/sign-up routes respond. Two real users, invitation acceptance and backend session identity still require browser sign-in. |
-| MinIO                          | PASS                              | Ten real checks: private bucket, upload, checksum, immutable duplicate rejection, signed download, expiry, anonymous denial, clean scan, EICAR detection and oversize rejection. Separate restart/volume restore verifies bytes.             |
-| NVIDIA NIM                     | PASS: bounded evaluation          | Five real calls pass: commitment extraction, supported, insufficient, conflicting and injected evidence. Earlier runs returned malformed quotations/timeouts and were rejected; this is not a reliability or calibration guarantee.          |
-| PayPal Sandbox                 | BLOCKED: buyer/party approval     | Real OAuth and webhook management registration pass. No real Sandbox capture observed.                                                                                                                                                       |
-| PayPal webhook                 | BLOCKED: signed financial receipt | Real registration and unsigned rejection pass through restricted HTTPS relay. No signed capture/refund event observed; registration alone does not prove verification.                                                                       |
-| PayPal readback/reconciliation | BLOCKED: real financial operation | PostgreSQL integration tests validate exact readback matching and operator reconciliation using a test provider. No real ambiguous PayPal operation reconciled.                                                                              |
-| PayPal refund                  | BLOCKED: real captured payment    | Full/partial refund and ambiguous-result guards pass with test doubles. Real refund needs captured Sandbox payment and both parties' current consent.                                                                                        |
+| Provider                       | Result                              | Actual proof and boundary                                                                                                                                                                                                                        |
+| ------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Clerk                          | PASS: authenticated private reads   | Real signed-in browser reads Activity and both financial receipts through the verified session and membership boundary. The new Pact's two-party lifecycle was user-driven; the counterpart's interactive steps were not independently replayed. |
+| MinIO                          | PASS                                | Ten real checks: private bucket, upload, checksum, immutable duplicate rejection, signed download, expiry, anonymous denial, clean scan, EICAR detection and oversize rejection. Separate restart/volume restore verifies bytes.                 |
+| NVIDIA NIM                     | PASS: bounded evaluation            | Five real calls pass: commitment extraction, supported, insufficient, conflicting and injected evidence. Earlier runs returned malformed quotations/timeouts and were rejected; this is not a reliability or calibration guarantee.              |
+| PayPal Sandbox                 | PASS: real capture                  | Official GET readback matches the new Pact's stored order/capture IDs and USD 10,000 captured amount. The original Indian-app checkout remains preserved separately.                                                                             |
+| PayPal webhook                 | PASS: confirmed financial records   | Actual capture and refund IDs have VERIFIED/PROCESSED webhook records and matching confirmation audits. Official current readback confirms their IDs, amounts and completion.                                                                    |
+| PayPal readback/reconciliation | PASS: readback; live ambiguity open | Real order/capture/refund GET readback passes. Isolated PostgreSQL tests validate operator reconciliation; no real ambiguous PayPal operation has been reconciled.                                                                               |
+| PayPal refund                  | PASS: real full refund              | Official refund GET confirms USD 10,000, its actual refund ID and its parent capture link. The same IDs appear in the private refund receipt. Real partial-refund and ambiguity scenarios were not replayed.                                     |
 
 No path exists from AI output directly to PayPal execution. AI has neither financial tools nor
 PayPal credentials. Models return proposals; persisted fresh human consent authorizes execution.

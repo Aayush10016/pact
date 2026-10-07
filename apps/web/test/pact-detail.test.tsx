@@ -19,6 +19,44 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 const unicode = 'José — आयुष “Café” → 🧾?';
+it('distinguishes a completed refund from payment and offers both receipts without false payer errors', async () => {
+  const record = fixture();
+  mount(
+    vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/receipts'))
+        return Response.json({
+          data: [
+            { id: 'tx', kind: 'payment', amountMinor: '500000', currency: 'USD' },
+            { id: 'op', kind: 'refund', amountMinor: '500000', currency: 'USD' },
+          ],
+        });
+      return Response.json({
+        data: url.endsWith('/me')
+          ? { id: 'user-a' }
+          : url.endsWith('/capabilities')
+            ? { paypal: true, workers: true }
+            : {
+                ...record,
+                status: 'COMPLETED',
+                transaction: {
+                  ...record.transaction,
+                  state: 'COMPLETED',
+                  refunded_minor: '500000',
+                },
+              },
+      });
+    }),
+  );
+  await screen.findByText('Payment captured · Refund completed · USD');
+  await screen.findByRole('link', { name: 'View refund receipt' });
+  expect(screen.getByRole('link', { name: 'View payment receipt' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Capture approved Sandbox payment' })).toBeNull();
+  expect(screen.queryByText('Only the Pact’s payer can initiate or capture checkout.')).toBeNull();
+  expect(
+    screen.getByText('Payment actions are closed. View confirmed results in Financial records.'),
+  ).toBeTruthy();
+});
 it('renders the live form apostrophes and keeps legitimate question labels', () => {
   render(
     <SessionProvider configured>
@@ -65,6 +103,7 @@ it('renders Unicode without corruption, preserves question marks, and reloads au
   mount(
     vi.fn(async (input) => {
       const url = String(input);
+      if (url.endsWith('/receipts')) return Response.json({ data: [] });
       if (url.endsWith('/me')) return Response.json({ data: { id: 'user-a' } });
       if (url.endsWith('/capabilities'))
         return Response.json({ data: { paypal: true, workers: true } });
@@ -87,6 +126,7 @@ it('reports failed refresh without inventing an updated record', async () => {
   mount(
     vi.fn(async (input) => {
       const url = String(input);
+      if (url.endsWith('/receipts')) return Response.json({ data: [] });
       if (url.endsWith('/me')) return Response.json({ data: { id: 'user-a' } });
       if (url.endsWith('/capabilities'))
         return Response.json({ data: { paypal: true, workers: true } });
@@ -106,6 +146,7 @@ it('prevents duplicate clicks and surfaces the safe provider failure without cla
   mount(
     vi.fn(async (input, options) => {
       const url = String(input);
+      if (url.endsWith('/receipts')) return Response.json({ data: [] });
       if (options?.method === 'POST') {
         posts++;
         return Response.json(
