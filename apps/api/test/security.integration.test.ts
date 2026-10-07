@@ -320,7 +320,37 @@ it('uses payer ownership and stable operation IDs; capture response cannot confi
   await jobs.payment(order.id);
   await jobs.payment(order.id);
   expect(orderCalls).toBe(1);
+  const readback = vi.spyOn(paypal, 'getOrder').mockRejectedValueOnce(
+    new ProviderError(false, {
+      http: 404,
+      name: 'RESOURCE_NOT_FOUND',
+      issue: 'INVALID_RESOURCE_ID',
+    }),
+  );
+  const unavailable = await request('b', `pacts/${pactId}/payment/capture`, {});
+  expect(unavailable.status).toBe(503);
+  expect((await unavailable.json()).error.message).toContain('stored order');
+  expect(captureCalls).toBe(0);
+  expect(
+    (
+      await db.query(
+        "SELECT id FROM paypal_transactions WHERE transaction_id=$1 AND operation='CAPTURE'",
+        [txId],
+      )
+    ).rowCount,
+  ).toBe(0);
+  expect(
+    (await detail()).audit.some(
+      (e: { event_type: string }) => e.event_type === 'PAYMENT_PREFLIGHT_FAILED',
+    ),
+  ).toBe(true);
+  readback.mockRestore();
   const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  const duplicates = await Promise.all(
+    Array.from({ length: 4 }, () => request('b', `pacts/${pactId}/payment/capture`, {})),
+  );
+  for (const response of duplicates) expect((await response.json()).data.id).toBe(capture.id);
+  await jobs.payment(capture.id);
   await jobs.payment(capture.id);
   expect(captureCalls).toBe(1);
   expect((await detail()).transaction.state).toBe('CREATED');
@@ -339,6 +369,10 @@ it('rejects fake webhooks and confirms capture only from verified, ownership-mat
   expect((await webhook(eventId, 'PAYMENT.CAPTURE.COMPLETED', resource)).status).toBe(200);
   await processReceipt(eventId);
   expect((await detail()).transaction.state).toBe('CAPTURED');
+  const repeated = await request('b', `pacts/${pactId}/payment/capture`, {});
+  expect(repeated.status).toBe(201);
+  expect((await repeated.json()).data.status).toBe('CONFIRMED');
+  expect(captureCalls).toBe(1);
   await webhook(eventId, 'PAYMENT.CAPTURE.COMPLETED', resource);
   await processReceipt(eventId);
   expect(
@@ -594,3 +628,83 @@ it('never retries an ambiguous full refund and reconciles only verified readback
   ).toBe(true);
   ambiguousRefund = false;
 });
+it.each(['already-captured', 'ambiguous-capture', 'minimal-response', 'failed-readback'])(
+  'reads back %s without a second financial POST',
+  async (scenario) => {
+    captured = false;
+    refunded = false;
+    orderId = `ORDER${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    captureId = `CAP${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    const created = await request(
+      'a',
+      'pacts',
+      { ...body, title: `Capture safety ${scenario}` },
+      crypto.randomUUID(),
+    );
+    pactId = (await created.json()).data.id;
+    const invites = (await (await request('b', 'me/invitations')).json()).data;
+    await request(
+      'b',
+      `invitations/${invites.find((i: { pact_id: string }) => i.pact_id === pactId).id}/accept`,
+      {},
+    );
+    const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+    await jobs.payment(order.id);
+    const callsBefore = captureCalls;
+    const amountMismatch = vi.spyOn(paypal, 'getOrder').mockResolvedValueOnce({
+      id: orderId,
+      status: 'APPROVED',
+      purchase_units: [
+        {
+          custom_id: txId,
+          amount: { currency_code: 'EUR', value: '25.50' },
+          payments: { captures: [] },
+        },
+      ],
+    });
+    expect((await request('b', `pacts/${pactId}/payment/capture`, {})).status).toBe(409);
+    expect(captureCalls).toBe(callsBefore);
+    amountMismatch.mockRestore();
+    if (scenario === 'already-captured') captured = true;
+    const operation = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json())
+      .data;
+    if (scenario === 'ambiguous-capture') {
+      const uncertain = vi.spyOn(paypal, 'capture').mockImplementationOnce(async () => {
+        captureCalls++;
+        captured = true;
+        throw new ProviderError(true);
+      });
+      await expect(jobs.payment(operation.id)).rejects.toThrow(ProviderError);
+      uncertain.mockRestore();
+    } else if (scenario === 'minimal-response' || scenario === 'failed-readback') {
+      const minimal = vi.spyOn(paypal, 'capture').mockImplementationOnce(async () => {
+        captureCalls++;
+        captured = true;
+        return { id: orderId, status: 'COMPLETED', purchase_units: [] };
+      });
+      if (scenario === 'failed-readback') {
+        const originalReadback = paypal.getOrder;
+        let reads = 0;
+        const unavailable = vi.spyOn(paypal, 'getOrder').mockImplementation(async () => {
+          if (++reads > 1) throw new ProviderError(false, { http: 404 });
+          return originalReadback();
+        });
+        await expect(jobs.payment(operation.id)).rejects.toMatchObject({ uncertain: true });
+        unavailable.mockRestore();
+      } else await jobs.payment(operation.id);
+      minimal.mockRestore();
+    } else await jobs.payment(operation.id);
+    await jobs.payment(operation.id);
+    const duplicate = await request('b', `pacts/${pactId}/payment/capture`, {});
+    expect((await duplicate.json()).data.id).toBe(operation.id);
+    expect(captureCalls).toBe(callsBefore + (scenario === 'already-captured' ? 0 : 1));
+    expect((await detail()).transaction.state).toBe('CREATED');
+    const event = `CAPTURE-SAFETY-${crypto.randomUUID()}`;
+    await webhook(event, 'PAYMENT.CAPTURE.COMPLETED', {
+      id: captureId,
+      supplementary_data: { related_ids: { order_id: orderId } },
+    });
+    await processReceipt(event);
+    expect((await detail()).transaction.state).toBe('CAPTURED');
+  },
+);

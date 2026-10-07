@@ -1,7 +1,11 @@
 import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
-    include: ['packages/*/src/**/*.test.ts', 'apps/api/test/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'apps/api/test/**/*.test.ts',
+      'apps/web/test/**/*.test.tsx',
+    ],
     exclude: ['**/node_modules/**', '**/integration/**', '**/*.integration.test.ts'],
     environment: 'node',
     hookTimeout: 60000,

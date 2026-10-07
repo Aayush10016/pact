@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import { createContext, useContext, useCallback, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth, UserButton } from '@clerk/nextjs';
 type Session = {
@@ -104,28 +104,39 @@ export function useResource<T>(path: string) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    let active = true;
-    if (session.status !== 'authenticated') return;
+  const generation = useRef({ value: 0 });
+  const refresh = useCallback(async () => {
+    if (session.status !== 'authenticated') return false;
+    const request = ++generation.current.value;
     setLoading(true);
-    api<T>(path)
-      .then((value) => {
-        if (active) {
-          setData(value);
-          setError('');
-        }
-      })
-      .catch((e) => {
-        if (active) setError(e instanceof Error ? e.message : 'Unable to load this record.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    try {
+      const value = await api<T>(path);
+      if (request !== generation.current.value) return false;
+      setData(value);
+      setError('');
+      return true;
+    } catch (e) {
+      if (request === generation.current.value)
+        setError(e instanceof Error ? e.message : 'Unable to load this record.');
+      return false;
+    } finally {
+      if (request === generation.current.value) setLoading(false);
+    }
+  }, [api, path, session.status]);
+  useEffect(() => {
+    const counter = generation.current;
+    void refresh();
     return () => {
-      active = false;
+      counter.value++;
     };
-  }, [api, path, revision, session.status]);
-  return { data, error, loading, reload: useCallback(() => setRevision((r) => r + 1), []) };
+  }, [refresh, revision]);
+  return {
+    data,
+    error,
+    loading,
+    refresh,
+    reload: useCallback(() => setRevision((r) => r + 1), []),
+  };
 }
 export function ResourceState({
   error,

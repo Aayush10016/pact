@@ -36,6 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high
       - run: pnpm prepare:packages
+      - run: pnpm encoding:check
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

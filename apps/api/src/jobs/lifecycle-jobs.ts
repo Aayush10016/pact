@@ -7,7 +7,12 @@ import { evidenceSnapshot } from '../assessments/assessments.module';
 import { EvidenceStorage } from '../evidence/storage';
 import { EvidenceScanner } from '../evidence/scanner';
 import { UnrecoverableError } from 'bullmq';
-import { PayPalProvider, ProviderError, minorAmount } from '../payments/paypal.provider';
+import {
+  PayPalProvider,
+  ProviderError,
+  minorAmount,
+  validateCaptureOrder,
+} from '../payments/paypal.provider';
 export function confirmAmount(
   amount: { currency_code: string; value: string } | undefined,
   minor: string,
@@ -268,14 +273,21 @@ export class LifecycleJobs {
         externalId = result.id;
       } else if (op.operation === 'CAPTURE') {
         const order = await this.paypal.getOrder(tx.order_id);
-        if (order.id !== tx.order_id || !order.purchase_units?.some((u) => u.custom_id === tx.id))
-          throw new Error('Order ownership mismatch');
+        validateCaptureOrder(order, tx);
         if (order.status !== 'APPROVED' && order.status !== 'COMPLETED')
           throw new ConflictException('Approve the PayPal order before capture');
-        const result =
-          order.status === 'COMPLETED'
-            ? order
-            : await this.paypal.capture(tx.order_id, op.request_id);
+        let result = order;
+        if (order.status !== 'COMPLETED') {
+          await this.paypal.capture(tx.order_id, op.request_id);
+          // Read the full order after the POST. Minimal capture representations may omit unit amounts.
+          // A failed readback remains uncertain and must never trigger another financial POST.
+          try {
+            result = await this.paypal.getOrder(tx.order_id);
+            validateCaptureOrder(result, tx);
+          } catch (error) {
+            throw new ProviderError(true, error instanceof ProviderError ? error.diagnostic : {});
+          }
+        }
         const capture = result.purchase_units?.flatMap((u) => u.payments?.captures ?? [])[0];
         if (!capture) throw new ProviderError(true);
         confirmAmount(capture.amount, tx.amount_minor, tx.currency);
@@ -323,7 +335,10 @@ export class LifecycleJobs {
         ],
       );
       await this.db.transaction(async (db) => {
-        await audit(db, p.id, op.actor_id, 'PAYMENT_RECONCILIATION_REQUIRED', { operationId: id });
+        await audit(db, p.id, op.actor_id, 'PAYMENT_RECONCILIATION_REQUIRED', {
+          operationId: id,
+          ...(e instanceof ProviderError ? e.diagnostic : {}),
+        });
         await notify(db, p.id, 'PAYMENT_RECONCILIATION_REQUIRED');
       });
       throw e;

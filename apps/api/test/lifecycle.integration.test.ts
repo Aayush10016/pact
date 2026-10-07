@@ -20,7 +20,7 @@ beforeAll(async () => {
         return {
           subject: `test-${group}-${who}`,
           email: `${who}-${group}@example.test`,
-          name: `Test party ${who}`,
+          name: `José — आयुष ${who} 🧾?`,
         };
       },
     })
@@ -34,7 +34,7 @@ afterAll(async () => {
   await app?.close();
 });
 export const body = {
-  title: 'A real persistent agreement',
+  title: 'A real persistent agreement — “Café” → आयुष 🧾?',
   counterpartyEmail: `b-${group}@example.test`,
   agreement: 'Deliver the final identity files and guidelines with complete source assets.',
   money: { amountMinor: '2550', currency: 'USD' },
@@ -74,6 +74,15 @@ it('persists Pacts once, with integer money, distinct parties and separate payme
   ).toBe(409);
   const detail = (await (await request('a', `pacts/${pactId}`)).json()).data;
   expect(detail.transaction.amount_minor).toBe('2550');
+  expect(detail.title).toBe(body.title);
+  expect(detail.parties[0].display_name).toBe('José — आयुष a 🧾?');
+  const unicodeResponse = await request('a', `pacts/${pactId}`);
+  expect(unicodeResponse.headers.get('content-type')).toContain('application/json');
+  const unicodeJson = new TextDecoder('utf-8', { fatal: true }).decode(
+    await unicodeResponse.arrayBuffer(),
+  );
+  expect(JSON.parse(unicodeJson).data.title).toBe(body.title);
+  expect(unicodeJson).not.toContain('\uFFFD');
   expect(detail.status).toBe('CREATED');
   expect(detail.transaction.state).toBe('CREATED');
   expect(detail.commitments[0].milestones).toHaveLength(1);

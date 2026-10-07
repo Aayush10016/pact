@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
 import { groundedAssessmentSchema, type PactRecord } from '@pact/types';
 import { formatMoney } from '@pact/shared';
@@ -24,6 +24,8 @@ function PrivateDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const actionPending = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [operation, setOperation] = useState<{
     id: string;
     status: string;
@@ -67,6 +69,8 @@ function PrivateDetail({ id }: { id: string }) {
     };
   }, [api, id, operation, reload]);
   async function action(path: string, value: unknown = {}, label = 'Record saved.') {
+    if (actionPending.current) return null;
+    actionPending.current = true;
     setBusy(path);
     setError('');
     setSuccess('');
@@ -82,6 +86,7 @@ function PrivateDetail({ id }: { id: string }) {
       setError(e instanceof Error ? e.message : 'Action could not be completed.');
       return null;
     } finally {
+      actionPending.current = false;
       setBusy('');
     }
   }
@@ -91,7 +96,31 @@ function PrivateDetail({ id }: { id: string }) {
       {},
       'Payment request queued. Confirmation comes from verified PayPal events.',
     );
-    if (result) setOperation(result);
+    if (result) {
+      setOperation(result);
+      if (result.status !== 'QUEUED')
+        setSuccess(
+          'Existing payment operation returned. Its status is shown below. No new payment request was created.',
+        );
+    }
+  }
+  async function refreshRecord() {
+    setRefreshing(true);
+    setError('');
+    setSuccess('');
+    try {
+      const [loaded, configured] = await Promise.all([record.refresh(), capabilities.refresh()]);
+      if (operation)
+        setOperation(await api<typeof operation>(`pacts/${id}/payment/operations/${operation.id}`));
+      if (!loaded || !configured) throw new Error('The record could not refresh. Try again.');
+      setSuccess(
+        'Record refreshed from the server. Payment changes require verified PayPal confirmation.',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The record could not refresh.');
+    } finally {
+      setRefreshing(false);
+    }
   }
   async function download(vid: string) {
     setError('');
@@ -183,7 +212,7 @@ function PrivateDetail({ id }: { id: string }) {
                 <span className={`avatar ${i ? 'clay' : ''}`}>
                   {r.display_name.slice(0, 2).toUpperCase()}
                 </span>{' '}
-                {r.display_name} � Party {i ? 'B' : 'A'}
+                {r.display_name} · Party {i ? 'B' : 'A'}
               </span>
             ))}
             {p.parties.length === 1 && <span>Counterparty acceptance pending</span>}
@@ -200,20 +229,14 @@ function PrivateDetail({ id }: { id: string }) {
             })}
           </p>
           <p className="muted">
-            Payment: {p.transaction.state.toLowerCase()} � {p.transaction.currency}
+            Payment: {p.transaction.state.toLowerCase()} · {p.transaction.currency}
           </p>
         </div>
       </div>
       <div className="section-toolbar">
         <span className="mono">RECORD VERSION {p.version}</span>
-        <button
-          className="text-link"
-          onClick={() => {
-            reload();
-            capabilities.reload();
-          }}
-        >
-          Refresh record
+        <button className="text-link" disabled={refreshing} onClick={() => void refreshRecord()}>
+          {refreshing ? 'Refreshing record…' : 'Refresh record'}
         </button>
       </div>
       {error && (
@@ -258,7 +281,7 @@ function PrivateDetail({ id }: { id: string }) {
                         {c.milestones.map((m) => (
                           <div key={m.id}>
                             <p>
-                              {m.title} � {m.status.toLowerCase()}
+                              {m.title} · {m.status.toLowerCase()}
                             </p>
                             {c.promised_by === me.data?.id &&
                               m.status === 'PENDING' &&
@@ -317,7 +340,7 @@ function PrivateDetail({ id }: { id: string }) {
                     </button>
                   </div>
                 ) : (
-                  <p className="muted">Only the Pact�s payer can initiate or capture checkout.</p>
+                  <p className="muted">Only the Pact’s payer can initiate or capture checkout.</p>
                 )}
                 {operation && (
                   <div className="notice">
@@ -373,7 +396,7 @@ function PrivateDetail({ id }: { id: string }) {
                         {e.versions.map((v) => (
                           <div key={v.id}>
                             <p className="mono">
-                              Version {v.version} � {v.state.toLowerCase()} � {v.mime_type}
+                              Version {v.version} · {v.state.toLowerCase()} · {v.mime_type}
                             </p>
                             {v.state === 'FAILED' && (
                               <p>
@@ -445,7 +468,7 @@ function PrivateDetail({ id }: { id: string }) {
                       </label>
                     </fieldset>
                     <button className="button secondary" disabled={!!busy}>
-                      {busy === 'upload' ? 'Storing evidence�' : 'Store private evidence'}
+                      {busy === 'upload' ? 'Storing evidence…' : 'Store private evidence'}
                     </button>
                   </form>
                 ) : (

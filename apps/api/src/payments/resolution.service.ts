@@ -12,7 +12,7 @@ import { Database, member, audit, enqueue } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
 import { evidenceSnapshot } from '../assessments/assessments.module';
-import { PayPalProvider } from './paypal.provider';
+import { PayPalProvider, ProviderError, validateCaptureOrder } from './paypal.provider';
 export function proposalHash(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -225,15 +225,40 @@ export class ResolutionService {
     if (!this.paypal.enabled())
       throw new ServiceUnavailableException('PayPal Sandbox is not configured.');
     if (operation === 'CAPTURE') {
-      const orderId = await this.db.transaction(async (db) => {
+      const preflight = await this.db.transaction(async (db) => {
         const p = await member(db, id, user.id);
         const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [id])).rows[0];
         if (p.role !== tx.payer_role)
           throw new ForbiddenException('Only the payer can authorize this payment.');
+        const prior = (
+          await db.query(
+            'SELECT id,status,response FROM paypal_transactions WHERE transaction_id=$1 AND operation=$2',
+            [tx.id, operation],
+          )
+        ).rows[0];
+        if (prior) return { prior };
+        if (p.status !== 'ACTIVE' || !['CREATED', 'AUTHORIZED'].includes(tx.state))
+          throw new ConflictException('Payment is not open for capture.');
         if (!tx.order_id) throw new ConflictException('Create and approve the PayPal order first.');
-        return tx.order_id as string;
+        return { orderId: tx.order_id as string, tx };
       });
-      const order = await this.paypal.getOrder(orderId);
+      if (preflight.prior) return preflight.prior;
+      let order;
+      try {
+        order = await this.paypal.getOrder(preflight.orderId!);
+      } catch (error) {
+        if (error instanceof ProviderError)
+          await this.db.transaction(async (db) => {
+            await member(db, id, user.id);
+            await audit(db, id, user.id, 'PAYMENT_PREFLIGHT_FAILED', {
+              operation,
+              orderId: preflight.orderId,
+              ...error.diagnostic,
+            });
+          });
+        throw error;
+      }
+      validateCaptureOrder(order, preflight.tx!);
       if (!['APPROVED', 'COMPLETED'].includes(order.status))
         throw new ConflictException('Approve the order at PayPal before requesting capture.');
     }
@@ -247,8 +272,6 @@ export class ResolutionService {
         throw new ForbiddenException('Only the payer can authorize this payment.');
       if (!['USD', 'EUR', 'GBP'].includes(tx.currency))
         throw new ConflictException('This currency is not enabled in the sandbox adapter.');
-      if (!['CREATED', 'AUTHORIZED'].includes(tx.state))
-        throw new ConflictException('Payment has already been started or completed.');
       if (operation === 'CAPTURE' && !tx.order_id)
         throw new ConflictException('Create and approve the PayPal order first.');
       const prior = (
@@ -258,6 +281,8 @@ export class ResolutionService {
         )
       ).rows[0];
       if (prior) return prior;
+      if (!['CREATED', 'AUTHORIZED'].includes(tx.state))
+        throw new ConflictException('Payment has already been started or completed.');
       const result = await db.query(
         "INSERT INTO paypal_transactions(transaction_id,request_id,operation,status,actor_id,amount_minor) VALUES($1,$2,$3,'QUEUED',$4,$5) RETURNING id,status",
         [tx.id, randomUUID(), operation, user.id, tx.amount_minor],

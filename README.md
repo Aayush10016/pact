@@ -56,9 +56,12 @@ not empirically calibrated. Inference cannot approve or execute financial action
 
 See [Phase 2 setup and live gates](docs/PHASE_2.md), [security](SECURITY.md),
 [architecture](ARCHITECTURE.md), [design](DESIGN_SYSTEM.md), and [validation](docs/VALIDATION.md).
+See [capture and Unicode investigation](docs/PAYPAL_CAPTURE_REPAIR.md) for the
+merchant-switch failure, preserved original order, refresh repair, and real-test boundaries.
 
 ```sh
 pnpm format:check
+pnpm encoding:check
 pnpm lint
 pnpm typecheck
 pnpm test
