@@ -22,14 +22,19 @@ export class ProviderError extends Error {
   ) {
     super('Payment provider unavailable');
   }
-  get userMessage() {
+  get userMessage(): string {
+    if (this.uncertain)
+      return 'PayPal returned an uncertain result. Refresh the record and reconcile the existing operation before trying another payment.';
     if (this.diagnostic.http === 404)
-      return 'PayPal cannot find the stored order with the configured Sandbox app. Verify the app and order in PayPal before continuing. Payment has not been confirmed.';
+      return 'PayPal cannot find the stored resource with the configured Sandbox app. Verify the app and resource in PayPal before continuing. Payment has not been confirmed.';
     if ([401, 403].includes(this.diagnostic.http ?? 0))
       return 'PayPal rejected the Sandbox app credentials or permissions. Check the local configuration before continuing.';
-    return this.uncertain
-      ? 'PayPal returned an uncertain result. Refresh the record and reconcile the existing operation before trying another payment.'
-      : 'PayPal could not verify this request. Check the existing order in PayPal and try again after resolving the provider error.';
+    return 'PayPal could not verify this request. Check the existing order in PayPal and try again after resolving the provider error.';
+  }
+}
+export class CheckoutUnavailableError extends ProviderError {
+  get userMessage() {
+    return 'The stored order cannot be accessed with the current PayPal Sandbox app. Changing app credentials does not transfer an existing checkout to the new merchant. Restore the original app to continue this order, or verify that it has no completed payment before creating a new Pact and checkout with the current app. This Pact has no confirmed payment.';
   }
 }
 async function providerFailure(response: Response, uncertain: boolean) {

@@ -78,6 +78,14 @@ export function AccessGate({ children }: { children: React.ReactNode }) {
     </section>
   );
 }
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly reason?: string,
+  ) {
+    super(message);
+  }
+}
 export function useApi() {
   const { getToken } = useSession();
   return useCallback(
@@ -91,7 +99,10 @@ export function useApi() {
       const response = await fetch(`/api/pact/${path}`, { ...options, headers, cache: 'no-store' });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.error?.message ?? 'This action could not be completed. Try again.');
+        throw new ApiError(
+          result.error?.message ?? 'This action could not be completed. Try again.',
+          result.error?.reason,
+        );
       return result.data as T;
     },
     [getToken],

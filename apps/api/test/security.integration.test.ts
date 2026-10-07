@@ -320,7 +320,7 @@ it('uses payer ownership and stable operation IDs; capture response cannot confi
   await jobs.payment(order.id);
   await jobs.payment(order.id);
   expect(orderCalls).toBe(1);
-  const readback = vi.spyOn(paypal, 'getOrder').mockRejectedValueOnce(
+  const readback = vi.spyOn(paypal, 'getOrder').mockRejectedValue(
     new ProviderError(false, {
       http: 404,
       name: 'RESOURCE_NOT_FOUND',
@@ -328,8 +328,13 @@ it('uses payer ownership and stable operation IDs; capture response cannot confi
     }),
   );
   const unavailable = await request('b', `pacts/${pactId}/payment/capture`, {});
-  expect(unavailable.status).toBe(503);
+  expect(unavailable.status).toBe(409);
   expect((await unavailable.json()).error.message).toContain('stored order');
+  const staleCheckout = await request('b', `pacts/${pactId}/payment/order`, {});
+  expect(staleCheckout.status).toBe(409);
+  expect((await staleCheckout.json()).error.reason).toBe('PAYPAL_ORDER_UNAVAILABLE');
+  expect(orderCalls).toBe(1);
+  expect((await detail()).transaction.order_id).toBe(orderId);
   expect(captureCalls).toBe(0);
   expect(
     (
@@ -345,6 +350,9 @@ it('uses payer ownership and stable operation IDs; capture response cannot confi
     ),
   ).toBe(true);
   readback.mockRestore();
+  expect((await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data.id).toBe(
+    order.id,
+  );
   const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
   const duplicates = await Promise.all(
     Array.from({ length: 4 }, () => request('b', `pacts/${pactId}/payment/capture`, {})),

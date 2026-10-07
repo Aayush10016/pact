@@ -1,12 +1,15 @@
 import { ArgumentsHost, Catch, HttpException, Logger, type ExceptionFilter } from '@nestjs/common';
-import { ProviderError } from '../payments/paypal.provider';
+import { CheckoutUnavailableError, ProviderError } from '../payments/paypal.provider';
 import type { ServerResponse } from 'node:http';
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const provider = exception instanceof ProviderError;
+    const unavailableOrder = exception instanceof CheckoutUnavailableError;
     const status = provider
-      ? 503
+      ? unavailableOrder
+        ? 409
+        : 503
       : exception instanceof HttpException
         ? exception.getStatus()
         : 500;
@@ -21,6 +24,7 @@ export class HttpErrorFilter implements ExceptionFilter {
       JSON.stringify({
         error: {
           code: status,
+          ...(unavailableOrder ? { reason: 'PAYPAL_ORDER_UNAVAILABLE' } : {}),
           message: provider
             ? exception.userMessage
             : status >= 500

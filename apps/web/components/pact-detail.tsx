@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
 import { groundedAssessmentSchema, type PactRecord } from '@pact/types';
 import { formatMoney } from '@pact/shared';
-import { AccessGate, useApi, useResource, ResourceState } from './session';
+import { AccessGate, ApiError, useApi, useResource, ResourceState } from './session';
 const sections = ['Commitments', 'Evidence', 'Assessment', 'Resolution'] as const;
 type Capabilities = { storage: boolean; advisory: boolean; paypal: boolean; workers: boolean };
 export function PactDetail({ id }: { id: string }) {
@@ -24,6 +24,7 @@ function PrivateDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [checkoutUnavailable, setCheckoutUnavailable] = useState(false);
   const actionPending = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [operation, setOperation] = useState<{
@@ -83,6 +84,10 @@ function PrivateDetail({ id }: { id: string }) {
       reload();
       return result;
     } catch (e) {
+      if (e instanceof ApiError && e.reason === 'PAYPAL_ORDER_UNAVAILABLE') {
+        setCheckoutUnavailable(true);
+        setOperation(null);
+      }
       setError(e instanceof Error ? e.message : 'Action could not be completed.');
       return null;
     } finally {
@@ -97,6 +102,7 @@ function PrivateDetail({ id }: { id: string }) {
       'Payment request queued. Confirmation comes from verified PayPal events.',
     );
     if (result) {
+      setCheckoutUnavailable(false);
       setOperation(result);
       if (result.status !== 'QUEUED')
         setSuccess(
@@ -249,6 +255,20 @@ function PrivateDetail({ id }: { id: string }) {
           {success}
         </p>
       )}
+      {checkoutUnavailable && (
+        <div className="notice" role="status">
+          <div>
+            <p>
+              Keep this record for its history. If you changed merchant apps and have verified that
+              the old checkout has no completed payment, create a new Pact, have both parties accept
+              it, then create its Sandbox checkout. Approval at PayPal is separate from capture.
+            </p>
+            <Link className="button secondary" href="/workspace/new">
+              Create a new Pact for the current Sandbox app
+            </Link>
+          </div>
+        </div>
+      )}
       <div className="detail-layout">
         <div>
           <nav className="detail-tabs" aria-label="Pact sections">
@@ -329,11 +349,13 @@ function PrivateDetail({ id }: { id: string }) {
                       disabled={!!busy}
                       onClick={() => payment('order')}
                     >
-                      Create Sandbox checkout
+                      {checkoutUnavailable
+                        ? 'Check existing checkout again'
+                        : 'Create Sandbox checkout'}
                     </button>
                     <button
                       className="button secondary"
-                      disabled={!!busy}
+                      disabled={!!busy || checkoutUnavailable}
                       onClick={() => payment('capture')}
                     >
                       Capture approved Sandbox payment

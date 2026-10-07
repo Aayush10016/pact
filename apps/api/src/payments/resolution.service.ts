@@ -12,7 +12,12 @@ import { Database, member, audit, enqueue } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
 import { evidenceSnapshot } from '../assessments/assessments.module';
-import { PayPalProvider, ProviderError, validateCaptureOrder } from './paypal.provider';
+import {
+  CheckoutUnavailableError,
+  PayPalProvider,
+  ProviderError,
+  validateCaptureOrder,
+} from './paypal.provider';
 export function proposalHash(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -224,7 +229,7 @@ export class ResolutionService {
     parse(idSchema, id);
     if (!this.paypal.enabled())
       throw new ServiceUnavailableException('PayPal Sandbox is not configured.');
-    if (operation === 'CAPTURE') {
+    {
       const preflight = await this.db.transaction(async (db) => {
         const p = await member(db, id, user.id);
         const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [id])).rows[0];
@@ -236,7 +241,8 @@ export class ResolutionService {
             [tx.id, operation],
           )
         ).rows[0];
-        if (prior) return { prior };
+        if (prior && (operation === 'CAPTURE' || !tx.order_id)) return { prior };
+        if (operation === 'ORDER' && !tx.order_id) return {};
         if (p.status !== 'ACTIVE' || !['CREATED', 'AUTHORIZED'].includes(tx.state))
           throw new ConflictException('Payment is not open for capture.');
         if (!tx.order_id) throw new ConflictException('Create and approve the PayPal order first.');
@@ -244,23 +250,27 @@ export class ResolutionService {
       });
       if (preflight.prior) return preflight.prior;
       let order;
-      try {
-        order = await this.paypal.getOrder(preflight.orderId!);
-      } catch (error) {
-        if (error instanceof ProviderError)
-          await this.db.transaction(async (db) => {
-            await member(db, id, user.id);
-            await audit(db, id, user.id, 'PAYMENT_PREFLIGHT_FAILED', {
-              operation,
-              orderId: preflight.orderId,
-              ...error.diagnostic,
+      if (preflight.orderId) {
+        try {
+          order = await this.paypal.getOrder(preflight.orderId!);
+        } catch (error) {
+          if (error instanceof ProviderError)
+            await this.db.transaction(async (db) => {
+              await member(db, id, user.id);
+              await audit(db, id, user.id, 'PAYMENT_PREFLIGHT_FAILED', {
+                operation,
+                orderId: preflight.orderId,
+                ...error.diagnostic,
+              });
             });
-          });
-        throw error;
+          if (error instanceof ProviderError && !error.uncertain && error.diagnostic.http === 404)
+            throw new CheckoutUnavailableError(false, error.diagnostic);
+          throw error;
+        }
+        validateCaptureOrder(order, preflight.tx!);
+        if (operation === 'CAPTURE' && !['APPROVED', 'COMPLETED'].includes(order.status))
+          throw new ConflictException('Approve the order at PayPal before requesting capture.');
       }
-      validateCaptureOrder(order, preflight.tx!);
-      if (!['APPROVED', 'COMPLETED'].includes(order.status))
-        throw new ConflictException('Approve the order at PayPal before requesting capture.');
     }
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);

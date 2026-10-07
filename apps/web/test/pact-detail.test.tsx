@@ -112,9 +112,10 @@ it('prevents duplicate clicks and surfaces the safe provider failure without cla
           {
             error: {
               message: 'PayPal cannot find the stored order with the configured Sandbox app.',
+              reason: 'PAYPAL_ORDER_UNAVAILABLE',
             },
           },
-          { status: 503 },
+          { status: 409 },
         );
       }
       return Response.json({
@@ -133,4 +134,11 @@ it('prevents duplicate clicks and surfaces the safe provider failure without cla
   await waitFor(() => expect(posts).toBe(1));
   expect(document.body.textContent).toContain('Payment: created');
   expect(screen.queryByText(/Payment request queued/)).toBeNull();
+  expect(
+    screen
+      .getByRole('link', { name: 'Create a new Pact for the current Sandbox app' })
+      .getAttribute('href'),
+  ).toBe('/workspace/new');
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole('button', { name: 'Check existing checkout again' })).toBeTruthy();
 });

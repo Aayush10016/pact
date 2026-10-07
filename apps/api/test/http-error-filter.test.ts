@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { Logger, type ArgumentsHost } from '@nestjs/common';
 import { HttpErrorFilter } from '../src/common/http-error.filter';
-import { ProviderError } from '../src/payments/paypal.provider';
+import { CheckoutUnavailableError, ProviderError } from '../src/payments/paypal.provider';
 it('returns safe UTF-8 provider errors without stack traces or raw provider bodies', () => {
   const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   const response = { statusCode: 0, setHeader: vi.fn(), end: vi.fn() };
@@ -21,9 +21,29 @@ it('returns safe UTF-8 provider errors without stack traces or raw provider bodi
       'application/json; charset=utf-8',
     );
     const json = JSON.parse(response.end.mock.calls[0]![0]);
-    expect(json.error.message).toContain('stored order');
+    expect(json.error.message).toContain('stored resource');
     expect(json.error).not.toHaveProperty('stack');
     expect(warn).toHaveBeenCalledOnce();
+  } finally {
+    warn.mockRestore();
+  }
+});
+it('distinguishes inaccessible checkout from an ambiguous financial outcome', () => {
+  const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  const response = { statusCode: 0, setHeader: vi.fn(), end: vi.fn() };
+  const host = { switchToHttp: () => ({ getResponse: () => response }) } as ArgumentsHost;
+  try {
+    new HttpErrorFilter().catch(new CheckoutUnavailableError(false, { http: 404 }), host);
+    expect(response.statusCode).toBe(409);
+    expect(JSON.parse(response.end.mock.calls[0]![0]).error.reason).toBe(
+      'PAYPAL_ORDER_UNAVAILABLE',
+    );
+    response.end.mockClear();
+    new HttpErrorFilter().catch(new ProviderError(true, { http: 404 }), host);
+    expect(response.statusCode).toBe(503);
+    const error = JSON.parse(response.end.mock.calls[0]![0]).error;
+    expect(error.message).toContain('uncertain result');
+    expect(error).not.toHaveProperty('reason');
   } finally {
     warn.mockRestore();
   }

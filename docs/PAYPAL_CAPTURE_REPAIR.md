@@ -51,7 +51,29 @@ UTF-8 and literal replacement characters in tracked source/docs, including in CI
 API error JSON explicitly declares UTF-8. The existing JSON/proxy path preserves
 Unicode bytes. No lossy ASCII/Latin-1 conversion was found in these rendering paths.
 
-## Refresh behavior
+## Merchant app changes and stale checkout recovery
+
+The follow-up report used the same original Pact and Indian-app order. The US app's
+OAuth succeeded, but official order readback still returned 404. The user confirmed
+PayPal showed approval only, with no completed payment receipt. There was no new
+US order in the local record and no CAPTURE operation queued for the old order.
+
+Previously, requesting checkout again returned the saved ORDER operation and its
+old approval link without checking which app could access it. Both checkout reuse
+and capture now perform authenticated payer-only official order readback before
+continuing. An inaccessible stored order returns a specific 409 conflict with
+`PAYPAL_ORDER_UNAVAILABLE`, rather than a misleading general 503 outage. Other
+provider outages and uncertain financial results retain 503 and reconciliation.
+The UI removes the stale link, blocks capture, offers a new Pact form, and allows
+rechecking the existing order after restoring the original app. It does not replace
+orders, erase history, issue a second financial operation, or mark approval paid.
+
+For the current US merchant, verify that the old checkout has no completed payment,
+create one new Pact, obtain both parties' acceptance, and create its checkout before
+approving it at PayPal. The real payer then requests capture on that new Pact. A
+buyer account's country does not change the merchant app that created an order.
+
+## Refresh feedback
 
 Refresh already sent uncached authenticated GET requests. In the failure case the
 server still returned the unchanged CREATED payment because capture had never been
