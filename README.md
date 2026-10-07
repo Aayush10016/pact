@@ -2,8 +2,8 @@
 
 **Make the commitment. Prove the work. Resolve fairly.**
 
-Pact is a trust layer for transactions between people who donâ€™t know each other.
-Commitments â†’ evidence â†’ fulfillment â†’ payment â†’ resolution.
+Pact is a trust layer for transactions between people who don't know each other.
+Commitments -> evidence -> fulfillment -> payment -> resolution.
 
 This repository is the **Phase 1 foundation**, not a public financial product. It contains a real
 Next.js application, NestJS REST service, separate FastAPI skeleton, relational migration,
