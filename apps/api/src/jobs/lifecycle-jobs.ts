@@ -124,7 +124,19 @@ export class LifecycleJobs {
     const sources = new Map<string, string>(
       a.input_snapshot.evidence.map((e: { id: string; content: string }) => [e.id, e.content]),
     );
+    const associations = new Map<string, string | null>(
+      a.input_snapshot.evidence.map((e: { id: string; commitmentId?: string | null }) => [
+        e.id,
+        e.commitmentId ?? null,
+      ]),
+    );
     for (const commitment of value.commitments) {
+      if (
+        commitment.evidenceIds.some(
+          (e) => associations.get(e) && associations.get(e) !== commitment.commitmentId,
+        )
+      )
+        throw new Error('AI_EVIDENCE_ASSOCIATION_INVALID');
       if (
         commitment.citations.some(
           (c) =>

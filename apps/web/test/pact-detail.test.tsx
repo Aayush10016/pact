@@ -183,3 +183,70 @@ it('prevents duplicate clicks and surfaces the safe provider failure without cla
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('button', { name: 'Check existing checkout again' })).toBeTruthy();
 });
+
+it('lets a disputed pending capture refresh confirmation without another capture', async () => {
+  const calls: string[] = [];
+  mount(
+    vi.fn(async (input, options) => {
+      const url = String(input);
+      if (options?.method === 'POST') {
+        calls.push(url);
+        return Response.json({ data: { status: 'CONFIRMED' } });
+      }
+      if (url.endsWith('/receipts')) return Response.json({ data: [] });
+      if (url.endsWith('/me')) return Response.json({ data: { id: 'user-a' } });
+      if (url.endsWith('/capabilities'))
+        return Response.json({ data: { paypal: true, workers: true } });
+      return Response.json({
+        data: {
+          ...fixture(),
+          status: 'DISPUTED',
+          transaction: { ...fixture().transaction, confirmation_pending: true },
+        },
+      });
+    }),
+  );
+  await screen.findByText(/Payment was submitted/);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh record' }));
+  await waitFor(() => expect(calls).toHaveLength(1));
+  expect(calls[0]).toMatch(/payment\/refresh$/);
+  expect(screen.queryByRole('button', { name: 'Capture approved Sandbox payment' })).toBeNull();
+});
+
+it.each(['user-a', 'user-b'])(
+  'keeps resolution proposals available to %s after captured payment',
+  async (member) => {
+    const record = {
+      ...fixture(),
+      status: 'DISPUTED',
+      transaction: { ...fixture().transaction, state: 'CAPTURED' },
+      parties: [
+        { user_id: 'user-a', role: 'PARTY_A', display_name: 'Creator' },
+        { user_id: 'user-b', role: 'PARTY_B', display_name: 'Recipient' },
+      ],
+      audit: [
+        {
+          id: 'audit',
+          event_type: 'PACT_DISPUTED',
+          created_at: '2026-10-07T10:00:00Z',
+          reason: 'The delivery needs more backend project detail.',
+        },
+      ],
+    };
+    mount(
+      vi.fn(async (input) => {
+        const url = String(input);
+        if (url.endsWith('/me')) return Response.json({ data: { id: member } });
+        if (url.endsWith('/capabilities'))
+          return Response.json({ data: { paypal: true, workers: true } });
+        if (url.endsWith('/receipts')) return Response.json({ data: [] });
+        return Response.json({ data: record });
+      }),
+    );
+    await screen.findByRole('heading', { name: unicode });
+    fireEvent.click(screen.getByRole('button', { name: 'Resolution' }));
+    await screen.findByText('The delivery needs more backend project detail.');
+    expect(screen.getByRole('button', { name: 'Propose a new resolution version' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Share resolution concern' })).toBeTruthy();
+  },
+);

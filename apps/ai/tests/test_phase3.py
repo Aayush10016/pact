@@ -74,3 +74,71 @@ def test_commitment_extraction_requires_service_identity(monkeypatch):
         TestClient(app).post("/v1/commitments/extract", json=payload.model_dump()).status_code
         == 403
     )
+
+
+def test_resume_artifact_preserves_its_recorded_commitment_and_exact_support(monkeypatch):
+    import json
+
+    from pact_ai.schemas import AssessmentRequest
+
+    artifact = "Backend developer. Python, FastAPI, PostgreSQL. Built REST APIs."
+    resume = AssessmentRequest(
+        pactId="pact",
+        commitments=[
+            {
+                "id": "resume",
+                "description": "Make a resume for backend developer. Acceptance: 80% of work done.",
+            }
+        ],
+        evidence=[{"id": "pdf-version", "commitmentId": "resume", "content": artifact}],
+    )
+    output = {
+        "status": "FULFILLED",
+        "confidence": 0.8,
+        "supportingEvidence": ["pdf-version"],
+        "conflictingEvidence": [],
+        "missingEvidence": [],
+        "reasoningSummary": (
+            "The supplied resume describes backend skills. The percentage is not a defined rubric."
+        ),
+        "recommendation": {"type": "NO_ACTION"},
+        "commitments": [
+            {
+                "commitmentId": "resume",
+                "status": "FULFILLED",
+                "evidenceIds": ["pdf-version"],
+                "claim": "Built REST APIs.",
+                "citations": [{"evidenceId": "pdf-version", "quote": "Built REST APIs."}],
+                "inference": "This artifact addresses the requested role.",
+                "uncertainty": "No numerical rubric agreed.",
+            }
+        ],
+    }
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-only")
+    monkeypatch.setenv("NVIDIA_NIM_MODEL", "nvidia/nemotron-test-model")
+
+    def handler(req):
+        body = json.loads(req.content)
+        context = json.loads(body["messages"][1]["content"])["untrustedContext"]
+        assert context["evidence"][0]["commitmentId"] == "resume"
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(output)}}]})
+
+    assessed = asyncio.run(
+        validated_assessment(NvidiaNimProvider(httpx.MockTransport(handler)), resume)
+    )
+    assert assessed.commitments[0].status == "FULFILLED"
+    assert assessed.commitments[0].claim in artifact
+
+
+def test_evidence_linked_to_other_commitment_cannot_support_a_conclusion():
+    from pact_ai.schemas import AssessmentRequest
+
+    other = request.model_dump()
+    other["evidence"][0]["commitmentId"] = "other-commitment"
+
+    class Output:
+        async def assess(self, _):
+            return result
+
+    with pytest.raises(InvalidAssessment, match="different commitment"):
+        asyncio.run(validated_assessment(Output(), AssessmentRequest.model_validate(other)))

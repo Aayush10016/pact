@@ -157,5 +157,11 @@ export interface PactRecord {
     approvals: Array<{ user_id: string; decision: string }>;
     execution?: { status: string } | null;
   }>;
-  audit: Array<{ id: string; event_type: string; created_at: string; label?: string }>;
+  audit: Array<{
+    id: string;
+    event_type: string;
+    created_at: string;
+    label?: string;
+    reason?: string;
+  }>;
 }

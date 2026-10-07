@@ -23,6 +23,7 @@ const receipt: FinancialReceipt = {
   kind: 'payment',
   status: 'COMPLETED',
   provider: 'PayPal Sandbox',
+  merchantId: 'REAL-SANDBOX-MERCHANT',
   pactId: 'pact-test',
   pactTitle: 'A shared promise',
   amountMinor: '1000000',
@@ -39,6 +40,7 @@ it('renders a payment receipt with the exact supplied confirmed identifiers, amo
   render(<ReceiptDocument receipt={receipt} />);
   expect(screen.getByRole('heading', { name: 'Payment completed.' })).toBeTruthy();
   for (const value of [
+    'REAL-SANDBOX-MERCHANT',
     'ORDER-FROM-PROVIDER',
     'CAPTURE-FROM-PROVIDER',
     'COMPLETED / CAPTURED',

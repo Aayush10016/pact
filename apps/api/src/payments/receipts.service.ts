@@ -80,6 +80,7 @@ export class ReceiptsService {
     });
     const { op, pact, parties } = stored;
     let providerTime: unknown;
+    let merchantId: string | null = null;
     if (kind === 'payment') {
       const capture = await this.paypal.getCapture(op.capture_id);
       const order = await this.paypal.getOrder(op.order_id);
@@ -101,6 +102,7 @@ export class ReceiptsService {
       )
         throw new ConflictException('PayPal receipt amount does not match.');
       providerTime = capture.create_time;
+      merchantId = order.purchase_units?.[0]?.payee?.merchant_id ?? null;
     } else {
       const refund = await this.paypal.getRefund(op.paypal_id);
       if (
@@ -130,6 +132,7 @@ export class ReceiptsService {
       kind,
       status: 'COMPLETED',
       provider: 'PayPal Sandbox',
+      merchantId,
       pactId,
       pactTitle: pact.title,
       amountMinor: op.amount_minor,

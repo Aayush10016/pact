@@ -98,12 +98,18 @@ export function ReceiptDocument({ receipt: r }: { receipt: FinancialReceipt }) {
               <dd className={styles.identifier}>{r.refundId}</dd>
             </div>
           )}
+          {payment && r.merchantId && (
+            <div>
+              <dt>PayPal merchant that received this payment</dt>
+              <dd className={styles.identifier}>{r.merchantId}</dd>
+            </div>
+          )}
           <div>
             <dt>Pact payer</dt>
             <dd>{r.payer}</dd>
           </div>
           <div>
-            <dt>Pact payee</dt>
+            <dt>Agreement recipient</dt>
             <dd>{r.payee}</dd>
           </div>
         </dl>

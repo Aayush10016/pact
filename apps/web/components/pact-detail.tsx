@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import styles from './record-panels.module.css';
 import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
 import { groundedAssessmentSchema, type PactRecord } from '@pact/types';
@@ -44,6 +45,39 @@ function PrivateDetail({ id }: { id: string }) {
     const timer = setInterval(reload, 5000);
     return () => clearInterval(timer);
   }, [waiting, reload]);
+  useEffect(() => {
+    if (
+      !p?.transaction.confirmation_pending ||
+      !['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state)
+    )
+      return;
+    let active = true;
+    let checking = false;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      if (checking || attempts >= 6) return;
+      checking = true;
+      attempts++;
+      void api(`pacts/${id}/payment/refresh`, { method: 'POST', body: '{}' })
+        .then(() => {
+          if (active) reload();
+        })
+        .catch(() => {
+          if (active)
+            setError(
+              'Automatic payment confirmation could not finish. Use Refresh record to retry without charging again.',
+            );
+          attempts = 6;
+        })
+        .finally(() => {
+          checking = false;
+        });
+    }, 15000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [api, id, p?.transaction.confirmation_pending, p?.transaction.state, reload]);
   useEffect(() => {
     if (
       !operation ||
@@ -116,6 +150,11 @@ function PrivateDetail({ id }: { id: string }) {
     setError('');
     setSuccess('');
     try {
+      if (
+        p?.transaction.confirmation_pending &&
+        ['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state)
+      )
+        await api(`pacts/${id}/payment/refresh`, { method: 'POST', body: '{}' });
       const [loaded, configured] = await Promise.all([record.refresh(), capabilities.refresh()]);
       if (operation)
         setOperation(await api<typeof operation>(`pacts/${id}/payment/operations/${operation.id}`));
@@ -227,7 +266,7 @@ function PrivateDetail({ id }: { id: string }) {
         </div>
         <div>
           <span className={`badge ${p.status === 'DISPUTED' ? 'warning' : ''}`}>
-            {p.status.toLowerCase()}
+            {p.status === 'DISPUTED' ? 'Resolution requested' : p.status.toLowerCase()}
           </span>
           <p className="mono detail-money">
             {formatMoney({
@@ -286,7 +325,9 @@ function PrivateDetail({ id }: { id: string }) {
               </button>
             ))}
           </nav>
-          <section className="detail-content">
+          <section
+            className={`detail-content ${section === 'Assessment' || section === 'Resolution' ? styles.results : ''}`}
+          >
             {section === 'Commitments' && (
               <>
                 <p className="eyebrow">WHAT WAS PROMISED</p>
@@ -371,9 +412,14 @@ function PrivateDetail({ id }: { id: string }) {
                   </div>
                 ) : (
                   <p className="muted">
-                    {!['CREATED', 'AUTHORIZED'].includes(p.transaction.state) ||
+                    {!['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state) ||
                     p.status !== 'ACTIVE'
-                      ? 'Payment actions are closed. View confirmed results in Financial records.'
+                      ? p.transaction.confirmation_pending
+                        ? 'Payment was submitted. Use Refresh record to verify the PayPal result without charging again.'
+                        : p.status === 'DISPUTED' &&
+                            ['CREATED', 'AUTHORIZED'].includes(p.transaction.state)
+                          ? 'Resolution requested. Payment is not confirmed; review the next steps in Resolution.'
+                          : 'Payment actions are closed. View confirmed results in Financial records.'
                       : 'Only the Pact’s payer can initiate or capture checkout.'}
                   </p>
                 )}
@@ -398,18 +444,8 @@ function PrivateDetail({ id }: { id: string }) {
                   </div>
                 )}
                 {p.status === 'ACTIVE' && (
-                  <button
-                    className="button secondary"
-                    disabled={!!busy}
-                    onClick={() =>
-                      action(
-                        'transition',
-                        { status: 'DISPUTED', expectedVersion: p.version },
-                        'Pact marked as needing resolution. Payment state is unchanged.',
-                      )
-                    }
-                  >
-                    Mark as needing resolution
+                  <button className="button secondary" onClick={() => setSection('Resolution')}>
+                    Review resolution options
                   </button>
                 )}
               </>
@@ -529,6 +565,12 @@ function PrivateDetail({ id }: { id: string }) {
                     explicitly request another assessment.
                   </p>
                 )}
+                {assessment.success && p.analyses[0]?.state !== 'READY' && (
+                  <p className="notice">
+                    Showing the earlier completed assessment while the latest request is unavailable
+                    or processing.
+                  </p>
+                )}
                 {assessment.success ? (
                   <>
                     <p className="badge">
@@ -536,25 +578,39 @@ function PrivateDetail({ id }: { id: string }) {
                     </p>
                     <p>{assessment.data.reasoningSummary}</p>
                     <p className="mono">
-                      Confidence estimate: {Math.round(assessment.data.confidence * 100)}%
+                      Confidence in this assessment: {Math.round(assessment.data.confidence * 100)}%
                     </p>
                     <p className="muted">
-                      A bounded model estimate, not measured statistical calibration.
-                    </p>
-                    <p className="field-help">
-                      A bounded model estimate, not a guarantee or a measured probability. Missing
-                      evidence remains explicit.
+                      This is model confidence, not the percentage of work completed.
                     </p>
                     {assessment.data.commitments.map((c) => (
-                      <article className="assessment-empty" key={c.commitmentId}>
+                      <article className={styles.card} key={c.commitmentId}>
                         <h3>{p.commitments.find((v) => v.id === c.commitmentId)?.title}</h3>
-                        <p>Claim: {c.claim}</p>
-                        <p>Inference: {c.inference}</p>
-                        <p>Uncertainty: {c.uncertainty}</p>
+                        {c.claim && (
+                          <p>
+                            <strong>Observed evidence</strong>
+                            <br />
+                            {c.claim}
+                          </p>
+                        )}
+                        <p>
+                          <strong>Assessment</strong>
+                          <br />
+                          {c.inference}
+                        </p>
+                        {c.uncertainty && (
+                          <p>
+                            <strong>Limitations</strong>
+                            <br />
+                            {c.uncertainty}
+                          </p>
+                        )}
                         <p>Appears: {c.status.toLowerCase().replaceAll('_', ' ')}</p>
                         {c.evidenceIds.map((vid) => (
                           <button key={vid} className="text-link" onClick={() => download(vid)}>
-                            Review cited evidence version {vid.slice(0, 8)}
+                            Review{' '}
+                            {p.evidence.find((e) => e.versions.some((v) => v.id === vid))?.title ??
+                              'supporting document'}
                           </button>
                         ))}
                       </article>
@@ -615,6 +671,64 @@ function PrivateDetail({ id }: { id: string }) {
               <>
                 <p className="eyebrow">A FAIR OUTCOME</p>
                 <h2>Both sides get a voice.</h2>
+                <p>
+                  A resolution request records a concern for both parties. It does not open a PayPal
+                  dispute, reverse a payment, or let AI decide the outcome. Evidence and assessment
+                  remain available.
+                </p>
+                {p.status === 'DISPUTED' && (
+                  <div className="notice">
+                    <div>
+                      <h3>Why resolution was requested</h3>
+                      <p>
+                        {p.audit.find(
+                          (a) =>
+                            ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN'].includes(a.event_type) &&
+                            a.reason,
+                        )?.reason ??
+                          'The earlier request did not record a reason. Either party can explain the concern below.'}
+                      </p>
+                      <p>
+                        Review the evidence together. Either party can propose keeping the payment
+                        or a refund. Both must approve the same outcome before it can be confirmed.
+                        A rejection keeps the discussion open; a revised proposal needs fresh
+                        decisions.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {['ACTIVE', 'DISPUTED'].includes(p.status) && (
+                  <form
+                    className="draft-form"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      const form = event.currentTarget;
+                      const reason = new FormData(form).get('reason');
+                      const result = await action(
+                        'transition',
+                        { status: 'DISPUTED', expectedVersion: p.version, reason },
+                        'Concern shared with both parties. Review or propose an outcome below.',
+                      );
+                      if (result) form.reset();
+                    }}
+                  >
+                    <label>
+                      {p.status === 'DISPUTED'
+                        ? 'Add context for both parties'
+                        : 'What needs resolution?'}
+                      <textarea
+                        name="reason"
+                        required
+                        minLength={10}
+                        maxLength={2000}
+                        placeholder="Explain the concern and the outcome you would like."
+                      />
+                    </label>
+                    <button className="button secondary" disabled={!!busy}>
+                      {p.status === 'DISPUTED' ? 'Share resolution concern' : 'Request resolution'}
+                    </button>
+                  </form>
+                )}
                 {current ? (
                   <>
                     <p className="mono">Resolution version {current.version}</p>
@@ -715,8 +829,9 @@ function PrivateDetail({ id }: { id: string }) {
                   <div className="notice">
                     <LockKeyhole size={20} />
                     <p>
-                      No current proposal. A verified captured payment is required before proposing
-                      its resolution.
+                      {p.transaction.state === 'CAPTURED'
+                        ? 'Either party can propose an outcome below. Both parties must approve the same proposal before it can take effect.'
+                        : 'Payment confirmation is pending. Use Refresh record to check PayPal without charging again. Once the capture is confirmed, either party can propose keeping the payment or a refund.'}
                     </p>
                   </div>
                 )}

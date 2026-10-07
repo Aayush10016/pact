@@ -19,6 +19,7 @@ export function activityLabel(
     PACT_CREATED: 'Pact created',
     PACT_ACTIVATED: 'Both parties accepted the Pact',
     PACT_DISPUTED: 'Resolution requested',
+    PACT_RESOLUTION_CONCERN: 'Resolution concern recorded',
     PACT_COMPLETED: 'Pact completed',
     PACT_CANCELLED: 'Pact cancelled',
     COMMITMENT_CREATED: 'Commitment recorded',

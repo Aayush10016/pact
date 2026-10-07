@@ -83,6 +83,7 @@ export const orderSchema = z
       .array(
         z.object({
           custom_id: z.string().optional(),
+          payee: z.object({ merchant_id: z.string().max(100).optional() }).optional(),
           amount: z.object({ currency_code: z.string(), value: z.string() }).optional(),
           payments: z.object({ captures: z.array(resourceSchema).optional() }).optional(),
         }),

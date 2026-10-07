@@ -141,7 +141,9 @@ function PrivateWorkspace() {
                     </div>
                   </div>
                   <span className={`badge ${p.status === 'DISPUTED' ? 'warning' : 'neutral'}`}>
-                    {p.status.replaceAll('_', ' ').toLowerCase()}
+                    {p.status === 'DISPUTED'
+                      ? 'Resolution requested'
+                      : p.status.replaceAll('_', ' ').toLowerCase()}
                   </span>
                   <span className="mono pact-money">
                     {formatMoney({ amountMinor: p.amount_minor, currency: p.currency })}

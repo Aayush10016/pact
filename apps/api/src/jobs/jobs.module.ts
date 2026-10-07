@@ -42,7 +42,16 @@ export class JobRuntime implements OnModuleInit, OnModuleDestroy {
       const worker = new Worker(
         name,
         async (job) => {
-          await this.runner.process(kind, job.data.resourceId);
+          try {
+            await this.runner.process(kind, job.data.resourceId);
+          } catch (error) {
+            if (
+              job.attemptsMade + 1 >= (job.opts.attempts ?? 3) ||
+              error instanceof UnrecoverableError
+            )
+              await this.runner.failed(kind, job.data.resourceId);
+            throw error;
+          }
         },
         {
           connection,
@@ -50,12 +59,6 @@ export class JobRuntime implements OnModuleInit, OnModuleDestroy {
           ...(kind === 'ASSESSMENT' ? { limiter: { max: 4, duration: 60000 } } : {}),
         },
       );
-      worker.on('failed', (job) => {
-        if (job && job.attemptsMade >= (job.opts.attempts ?? 3))
-          void this.runner
-            .failed(kind, job.data.resourceId)
-            .catch(() => this.logger.error('Failed to record job failure'));
-      });
       worker.on('error', () => this.logger.error('Job transport unavailable'));
       this.workers.push(worker);
     }

@@ -20,6 +20,7 @@ type ActivityContext = {
   created_at: Date;
   operation: string | null;
   decision: string | null;
+  reason: string | null;
   provider_event: string | null;
   receipt_id: string | null;
   receipt_operation: string | null;
@@ -276,15 +277,20 @@ export class LifecycleService {
         .object({
           status: z.enum(['DISPUTED', 'CANCELLED']),
           expectedVersion: z.number().int().positive(),
+          reason: z.string().trim().min(10).max(2000).optional(),
         })
-        .strict(),
+        .strict()
+        .refine((v) => v.status !== 'DISPUTED' || !!v.reason),
       value,
     );
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
       if (p.version !== data.expectedVersion)
         throw new ConflictException('Pact changed. Refresh before acting.');
-      if (!transitions[p.status]?.includes(data.status))
+      if (
+        !transitions[p.status]?.includes(data.status) &&
+        !(p.status === 'DISPUTED' && data.status === 'DISPUTED')
+      )
         throw new ConflictException('Invalid Pact transition.');
       const payment = await db.query('SELECT state FROM transactions WHERE pact_id=$1', [id]);
       if (
@@ -302,7 +308,13 @@ export class LifecycleService {
         id,
         data.status,
       ]);
-      await audit(db, id, user.id, `PACT_${data.status}`);
+      await audit(
+        db,
+        id,
+        user.id,
+        p.status === 'DISPUTED' ? 'PACT_RESOLUTION_CONCERN' : `PACT_${data.status}`,
+        data.reason ? { reason: data.reason } : {},
+      );
       return { status: data.status };
     });
   }
@@ -314,6 +326,7 @@ export class LifecycleService {
     const rows = (
       await query(
         `SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN') THEN a.metadata->>'reason' END reason,
           COALESCE(op.operation,CASE WHEN res.proposal->>'type' IN ('FULL_REFUND','PARTIAL_REFUND') THEN 'REFUND' END) operation,
           a.metadata->>'decision' decision,
           COALESCE(a.metadata->>'providerEventType',we.event_type) provider_event,
@@ -345,6 +358,7 @@ export class LifecycleService {
       event_type: a.event_type,
       created_at: a.created_at,
       label: activityLabel(a.event_type, a.operation, a.provider_event, a.decision),
+      ...(a.reason ? { reason: a.reason } : {}),
       receipt: a.receipt_id
         ? {
             id: a.receipt_operation === 'CAPTURE' ? a.transaction_id : a.receipt_id,

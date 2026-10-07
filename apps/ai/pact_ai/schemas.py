@@ -75,6 +75,7 @@ class Assessment(StrictModel):
 
 
 class EvidenceReference(StrictModel):
+    commitmentId: str | None = Field(default=None, max_length=100)
     id: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=10000)
 

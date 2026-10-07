@@ -13,7 +13,7 @@ import {
   Module,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { idSchema } from '@pact/types';
 import {
   AuthModule,
@@ -21,7 +21,7 @@ import {
   type AuthRequest,
   type Identity,
 } from '../auth/auth.module';
-import { Database, audit } from '../database/database.module';
+import { Database, member, audit } from '../database/database.module';
 import { parse } from '../pacts/lifecycle.service';
 import { PayPalProvider, minorAmount } from './paypal.provider';
 import { PaymentsModule } from './payments.module';
@@ -31,7 +31,7 @@ const inputSchema = z
   .object({
     requestId: idSchema,
     expectedStatus: z.enum(['NEEDS_RECONCILIATION', 'EXECUTING', 'PROVIDER_ACCEPTED']),
-    expectedTransactionVersion: z.number().int().positive(),
+    expectedTransactionVersion: z.number().int().nonnegative(),
     providerId: z.string().regex(/^[A-Za-z0-9-]{1,100}$/),
     reason: z.string().trim().min(10).max(500),
   })
@@ -111,13 +111,43 @@ export class ReconciliationService {
       };
     });
   }
+  async refreshCapture(pactId: string, actor: Identity) {
+    parse(idSchema, pactId);
+    const op = await this.db.transaction(async (db) => {
+      await member(db, pactId, actor.id);
+      const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [pactId])).rows[0];
+      if (tx.state === 'COMPLETED') return null;
+      return (
+        await db.query(
+          "SELECT op.*,tx.version AS transaction_version FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id JOIN parties payer ON payer.pact_id=tx.pact_id AND payer.user_id=op.actor_id AND (op.operation='REFUND' OR payer.role=tx.payer_role) WHERE tx.pact_id=$1 AND ((op.operation='CAPTURE' AND tx.state IN ('CREATED','AUTHORIZED')) OR (op.operation='REFUND' AND tx.state='CAPTURED')) AND op.status IN ('PROVIDER_ACCEPTED','NEEDS_RECONCILIATION') AND op.paypal_id IS NOT NULL",
+          [pactId],
+        )
+      ).rows[0];
+    });
+    if (!op) return { status: 'UNCHANGED' };
+    return this.performReadback(
+      op.id,
+      actor,
+      {
+        requestId: randomUUID(),
+        expectedStatus: op.status,
+        expectedTransactionVersion: op.transaction_version,
+        providerId: op.paypal_id,
+        reason: `Pact member requested confirmation of an already submitted ${op.operation.toLowerCase()}.`,
+      },
+      'MEMBER_PROVIDER_READBACK',
+    );
+  }
   async reconcile(operationId: string, actor: Identity, raw: unknown) {
-    const operators = (process.env.PACT_OPERATOR_SUBJECTS || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!operators.includes(actor.subject))
-      throw new ForbiddenException('Operator access required.');
+    this.operator(actor);
+    return this.performReadback(operationId, actor, raw, 'OPERATOR_PROVIDER_READBACK');
+  }
+  private async performReadback(
+    operationId: string,
+    actor: Identity,
+    raw: unknown,
+    source: string,
+  ) {
     parse(idSchema, operationId);
     const input = parse(inputSchema, raw);
     const fingerprint = createHash('sha256')
@@ -175,7 +205,11 @@ export class ReconciliationService {
       if (
         capture.id !== input.providerId ||
         capture.status !== 'COMPLETED' ||
+        order.status !== 'COMPLETED' ||
+        (capture.supplementary_data?.related_ids?.order_id !== undefined &&
+          capture.supplementary_data.related_ids.order_id !== op.order_id) ||
         order.id !== op.order_id ||
+        order.intent !== 'CAPTURE' ||
         order.purchase_units?.length !== 1 ||
         order.purchase_units[0]?.custom_id !== op.transaction_id ||
         !order.purchase_units[0]?.payments?.captures?.some((c) => c.id === capture.id)
@@ -284,7 +318,7 @@ export class ReconciliationService {
         "UPDATE paypal_transactions SET status='CONFIRMED',paypal_id=$2,failure_code=NULL,updated_at=now() WHERE id=$1",
         [operationId, input.providerId],
       );
-      const outcome = { operationId, status: 'CONFIRMED', source: 'OPERATOR_PROVIDER_READBACK' };
+      const outcome = { operationId, status: 'CONFIRMED', source };
       await db.query(
         'INSERT INTO reconciliation_reviews(request_id,operation_id,actor_id,fingerprint,reason,outcome) VALUES($1,$2,$3,$4,$5,$6)',
         [
@@ -327,10 +361,18 @@ class ReconciliationController {
     return { data: await this.service.reconcile(id, req.identity, input) };
   }
 }
+@Controller('v1/pacts/:id/payment')
+@UseGuards(AuthenticationGuard)
+class PaymentReadbackController {
+  constructor(@Inject(ReconciliationService) readonly service: ReconciliationService) {}
+  @Post('refresh') async refresh(@Param('id') id: string, @Req() req: AuthRequest) {
+    return { data: await this.service.refreshCapture(id, req.identity) };
+  }
+}
 @Module({
   imports: [AuthModule, PaymentsModule],
   providers: [ReconciliationService],
-  controllers: [ReconciliationController],
+  controllers: [ReconciliationController, PaymentReadbackController],
   exports: [ReconciliationService],
 })
 export class ReconciliationModule {}

@@ -491,14 +491,6 @@ em {
   border-top: 1px solid var(--line);
   padding-top: 22px;
 }
-.workflow-number {
-  color: var(--brand);
-  margin-bottom: 24px;
-}
-.workflow-number .mono {
-  color: var(--muted);
-  font-size: 10px;
-}
 .workflow-grid h3 {
   font-family: var(--font-display);
   font-size: 26px;
@@ -1818,9 +1810,6 @@ em {
   .workflow-grid {
     grid-template-columns: 1fr;
     gap: 30px;
-  }
-  .workflow-number {
-    margin-bottom: 15px;
   }
   .workflow-grid h3 {
     font-size: 26px;

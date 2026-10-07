@@ -25,7 +25,7 @@ export async function evidenceSnapshot(db: { query: Database['query'] }, pactId:
 }
 @Controller('v1/pacts/:id/assessments')
 @UseGuards(AuthenticationGuard)
-class AssessmentsController {
+export class AssessmentsController {
   constructor(@Inject(Database) private readonly db: Database) {}
   @Post() async request(@Param('id') id: string, @Req() req: AuthRequest, @Body() body: unknown) {
     parse(idSchema, id);
@@ -69,7 +69,11 @@ class AssessmentsController {
             id: c.id,
             description: `${c.title}: ${c.description}\nAcceptance criteria: ${c.acceptance_criteria}\nExpected evidence: ${c.expected_evidence}`,
           })),
-          evidence: ready.map((v) => ({ id: v.id, content: v.extracted_text.slice(0, 10000) })),
+          evidence: ready.map((v) => ({
+            id: v.id,
+            commitmentId: v.commitment_id,
+            content: v.extracted_text.slice(0, 10000),
+          })),
           unavailableEvidence: evidence.filter((v) => v.state !== 'READY').map((v) => v.id),
         };
         const r = await db.query(

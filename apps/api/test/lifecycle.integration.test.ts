@@ -125,6 +125,7 @@ it('rejects arbitrary transitions and stale Pact versions', async () => {
     (
       await request('b', `pacts/${pactId}/transition`, {
         status: 'DISPUTED',
+        reason: 'The parties need to review the delivered work together.',
         expectedVersion: detail.version + 10,
       })
     ).status,
@@ -133,8 +134,38 @@ it('rejects arbitrary transitions and stale Pact versions', async () => {
     (
       await request('b', `pacts/${pactId}/transition`, {
         status: 'DISPUTED',
+        reason: 'The parties need to review the delivered work together.',
         expectedVersion: detail.version,
       })
     ).status,
   ).toBe(201);
+});
+
+it('records both members concerns while resolution is open, without moving money', async () => {
+  const p = (await (await request('a', `pacts/${pactId}`)).json()).data;
+  expect(
+    (
+      await request('b', `pacts/${pactId}/transition`, {
+        status: 'DISPUTED',
+        expectedVersion: p.version,
+      })
+    ).status,
+  ).toBe(400);
+  const reason = 'The resume needs more detail about the backend projects.';
+  expect(
+    (
+      await request('a', `pacts/${pactId}/transition`, {
+        status: 'DISPUTED',
+        expectedVersion: p.version,
+        reason,
+      })
+    ).status,
+  ).toBe(201);
+  const a = (await (await request('a', `pacts/${pactId}`)).json()).data;
+  const b = (await (await request('b', `pacts/${pactId}`)).json()).data;
+  expect(a.transaction.state).toBe(p.transaction.state);
+  expect(
+    b.audit.find((e: { event_type: string }) => e.event_type === 'PACT_RESOLUTION_CONCERN').reason,
+  ).toBe(reason);
+  expect(a.audit).toEqual(b.audit);
 });

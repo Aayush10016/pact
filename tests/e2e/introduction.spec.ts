@@ -64,6 +64,7 @@ test('landing features use typography without decorative icons', async ({ page }
   const features = page.locator('.workflow-grid');
   await expect(features.locator('article')).toHaveCount(3);
   await expect(features.locator('svg')).toHaveCount(0);
+  await expect(features.getByText(/^(01|02|03)$/)).toHaveCount(0);
   await expect(features.getByRole('heading')).toHaveText([
     'Make it clear.',
     'Keep the record.',

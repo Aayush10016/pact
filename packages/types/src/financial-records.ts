@@ -10,6 +10,7 @@ export interface ReceiptSummary {
 export interface FinancialReceipt extends ReceiptSummary {
   status: 'COMPLETED';
   provider: 'PayPal Sandbox';
+  merchantId?: string | null;
   pactId: string;
   pactTitle: string;
   orderId: string;
@@ -27,5 +28,6 @@ export interface ActivityRecord {
   event_type: string;
   created_at: string;
   label: string;
+  reason?: string;
   receipt: ReceiptSummary | null;
 }

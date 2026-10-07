@@ -134,25 +134,19 @@ export default function Home() {
           <div className="workflow-grid">
             {[
               {
-                n: '01',
                 title: 'Make it clear.',
                 body: 'Define the deliverables, milestones, and payment conditions. Both sides know what good looks like.',
               },
               {
-                n: '02',
                 title: 'Keep the record.',
                 body: 'Connect each delivery, message, and document to the promise it supports. Nothing lost in the thread.',
               },
               {
-                n: '03',
                 title: 'Find a fair outcome.',
                 body: 'See what the evidence supports. Review a recommendation. People make the final decision.',
               },
             ].map((item) => (
-              <article key={item.n}>
-                <div className="workflow-number">
-                  <span className="mono">{item.n}</span>
-                </div>
+              <article key={item.title}>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
               </article>
