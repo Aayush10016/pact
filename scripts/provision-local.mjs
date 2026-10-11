@@ -8,12 +8,13 @@ if (!value) throw new Error('Migration database connection is required.');
 const url = new URL(value);
 if (
   !['localhost', '127.0.0.1', 'postgres'].includes(url.hostname) ||
-  !['/pact', '/pact_phase2_tests'].includes(url.pathname)
+  !['/pact', '/pact_phase2_tests', '/pact_phase3_tests'].includes(url.pathname)
 )
   throw new Error(
     'Local provisioning only supports the explicitly named Pact development databases.',
   );
-const password = process.env.APP_DATABASE_PASSWORD || 'pact_runtime_local_only';
+const password = process.env.APP_DATABASE_PASSWORD;
+if (!password) throw new Error('APP_DATABASE_PASSWORD is required; run local environment setup.');
 const db = new pg.Client({ connectionString: value });
 await db.connect();
 try {

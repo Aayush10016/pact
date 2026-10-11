@@ -22,7 +22,7 @@ Versions and JavaScript/Python lockfiles are committed. Fonts are packaged local
 
 ## Architecture and engineering
 
-The pnpm monorepo separates `apps/web`, `apps/api`, `apps/ai`, and shared types/domain/config packages. The intended boundary is web → authenticated API → internal AI. PostgreSQL owns authoritative records; Redis/BullMQ runs jobs. Private R2 evidence storage is reserved for Phase 2.
+The pnpm monorepo separates `apps/web`, `apps/api`, `apps/ai`, and shared types/domain/config packages. The intended boundary is web â†’ authenticated API â†’ internal AI. PostgreSQL owns authoritative records; Redis/BullMQ runs jobs. Private R2 evidence storage is reserved for Phase 2.
 
 - Frontend: branded landing, sample workspace, search/status filters, activity, validated session-only draft, and Pact commitment/evidence/assessment/resolution views. Responsive layouts, keyboard focus, skip navigation, field labels, and empty/loading/error states are included.
 - Backend: modular NestJS REST, health and real database/Redis readiness, typed sample resources, strict draft validation, safe error handling, JSON logs, scoped CORS, Helmet, and shutdown hooks. Financial requests are rejected even with a forged bearer token.
@@ -77,7 +77,7 @@ No outstanding user decisions are required for Phase 1.
 
 Local container validation used host ports 13000 (web), 14000 (API), and 18000 (AI), leaving native previews on their normal ports. All five long-running containers are healthy; the migration exited with code 0. The final local browser rerun passed both timed-out tests without changing assertions or adding retries to CI.
 
-# Phase 2 / validation record — 2026-10-06
+# Phase 2 / validation record â€” 2026-10-06
 
 Status: implemented and locally validated; live provider lifecycle proof is outstanding.
 The approved Phase 1 main branch remains unchanged. Work is on `codex/phase2-lifecycle`.
@@ -136,3 +136,13 @@ as calibrated. Until then this is a draft integration implementation, not a comp
 Operator reconciliation, production financial review, notification delivery, malware scanning,
 image OCR, calibrated evidence evaluations, retention controls, backup/restore drills,
 monitoring integration and deployment hardening. These do not replace the missing Phase 2 gates.
+
+## Human review and reputation (2026-10-11)
+
+Production lint/types/build and encoding checks passed. Unit/UI tests: 54 passed. Isolated PostgreSQL/Redis integration tests: 31 passed, including staff authorization, self-adjudication denial, private conversation scoping, request deduplication, stale versions, evidence-snapshot binding, no-response deadline, single refund execution, official readback, and verified-review eligibility/moderation. Python: Ruff passed and 27 tests passed. Desktop/mobile browser suite: 48 passed. The new ribbon logo was visually inspected on sign-in. A separate screenshot helper hit a browser screenshot protocol error while other browser checks were running; the complete primary browser suite and its screenshots passed.
+
+Existing Test 3 remains captured with its 85% advisory match assessment intact. The selected local reviewer was resolved from a verified stored Clerk identity and configured privately; no real adjudication/refund of an existing user Pact was performed. Financial-provider doubles are confined to tests. The selected reviewer is a participant in Test 3, so another staff identity is required to adjudicate that particular Pact. The computer-use browser integration could not initialize on this host; live signed-in staff/member UI was checked through component/HTTP integration tests, not by claiming an inspected private browser session.
+
+## Local password alert remediation (2026-10-11)
+
+PostgreSQL owner/runtime passwords were rotated in the existing cluster, with new connections succeeding and both previous passwords rejected. MinIO was restarted against its preserved volume with a new private password; the new credentials can read the existing bucket and the previous password is rejected. Setup was checked in an isolated temporary directory: random credentials generated, a second run preserved settings, and Compose rejected missing required passwords. No database/storage volumes were removed. Existing Test 3 payment state and advisory match were checked unchanged. Lint, encoding, format and configured-secret scanning passed; 54 unit/UI and 31 isolated database/Redis integration tests passed. The original lowercase `pact.` wordmark remains with the uploaded ribbon mark.

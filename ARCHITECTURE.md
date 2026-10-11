@@ -87,8 +87,19 @@ Do not hold a DB transaction open through a long remote call; use an outbox and 
 
 ## Deployment
 
+Phase 3 uses local Docker PostgreSQL/Redis/MinIO/ClamAV and free Tesseract OCR. EvidenceStorage
+retains R2 and selects MinIO for local validation. CLEAN scan state gates extraction, download
+and assessment. Ambiguous financial operations are never reissued by workers; audited allowlisted
+operator reconciliation uses provider GET readback and locked current consent/version checks.
+See [Phase 3 setup and release gates](docs/PHASE_3.md). The deployment alternatives below are
+future options and are not required or provisioned for the free local product.
+
 Next.js on Vercel; NestJS and FastAPI on Railway or equivalent; managed PostgreSQL and Redis;
 R2 for private evidence. No Kubernetes. Internal AI routes require service identity and network
 restriction before deployment. Add pgvector only after retrieval demonstrates a need.
 Structured backend startup logs use Nest's JSON logger. Sentry remains an unimplemented monitoring integration;
 the empty environment placeholder does not imply active telemetry.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).

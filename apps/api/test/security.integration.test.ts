@@ -6,8 +6,9 @@ import { readFile } from 'node:fs/promises';
 import { AppModule } from '../src/app.module';
 import { Database } from '../src/database/database.module';
 import { IdentityVerifier } from '../src/auth/auth.module';
-import { R2Storage } from '../src/evidence/storage';
-import { PayPalProvider, decimalAmount } from '../src/payments/paypal.provider';
+import { EvidenceStorage } from '../src/evidence/storage';
+import { EvidenceScanner } from '../src/evidence/scanner';
+import { PayPalProvider, decimalAmount, ProviderError } from '../src/payments/paypal.provider';
 import { JobRuntime } from '../src/jobs/jobs.module';
 import { LifecycleJobs } from '../src/jobs/lifecycle-jobs';
 import { HttpErrorFilter } from '../src/common/http-error.filter';
@@ -27,6 +28,8 @@ const storage = {
   },
 };
 let txId: string;
+let confirmedPaymentId: string;
+let confirmedRefundOperationId: string;
 let captured = false;
 let refunded = false;
 let refundCalls = 0;
@@ -34,7 +37,9 @@ let captureCalls = 0;
 let orderCalls = 0;
 let orderId = `ORDER${group.replaceAll('-', '').slice(0, 16)}`;
 let captureId = `CAP${group.replaceAll('-', '').slice(0, 16)}`;
-const refundId = `REF${group.replaceAll('-', '').slice(0, 16)}`;
+let refundId = `REF${group.replaceAll('-', '').slice(0, 16)}`;
+let refundMinor = '765';
+let ambiguousRefund = false;
 const amount = { currency_code: 'USD', value: '25.50' };
 const paypal = {
   enabled: () => true,
@@ -53,11 +58,13 @@ const paypal = {
     };
   },
   getOrder: async () => ({
+    intent: 'CAPTURE',
     id: orderId,
     status: captured ? 'COMPLETED' : 'APPROVED',
     purchase_units: [
       {
         custom_id: txId,
+        payee: { merchant_id: 'SANDBOX-MERCHANT' },
         amount,
         payments: { captures: captured ? [{ id: captureId, status: 'COMPLETED', amount }] : [] },
       },
@@ -72,11 +79,14 @@ const paypal = {
     id: captureId,
     status: refunded ? 'PARTIALLY_REFUNDED' : 'COMPLETED',
     amount,
+    create_time: '2026-10-07T08:00:00Z',
     supplementary_data: { related_ids: { order_id: orderId } },
   }),
   refund: async (_id: string, minor: string) => {
     refundCalls++;
     refunded = true;
+    refundMinor = minor;
+    if (ambiguousRefund) throw new ProviderError(true);
     return {
       id: refundId,
       status: 'COMPLETED',
@@ -86,7 +96,9 @@ const paypal = {
   getRefund: async () => ({
     id: refundId,
     status: 'COMPLETED',
-    amount: { currency_code: 'USD', value: '7.65' },
+    create_time: '2026-10-07T08:10:00Z',
+    update_time: '2026-10-07T08:11:00Z',
+    amount: { currency_code: 'USD', value: decimalAmount(refundMinor) },
     links: [
       { rel: 'up', href: `https://api-m.sandbox.paypal.com/v2/payments/captures/${captureId}` },
     ],
@@ -146,7 +158,13 @@ beforeAll(async () => {
             commitmentId: c.id,
             status: 'UNCLEAR',
             evidenceIds: [input.evidence[0].id],
-            claim: 'Delivery was claimed.',
+            claim: 'A dated delivery receipt; source assets are missing.',
+            citations: [
+              {
+                evidenceId: input.evidence[0].id,
+                quote: 'A dated delivery receipt; source assets are missing.',
+              },
+            ],
             inference: 'Complete source delivery is not established.',
             uncertainty: 'Source assets are missing.',
           })),
@@ -168,8 +186,10 @@ beforeAll(async () => {
         };
       },
     })
-    .overrideProvider(R2Storage)
+    .overrideProvider(EvidenceStorage)
     .useValue(storage)
+    .overrideProvider(EvidenceScanner)
+    .useValue({ scan: async () => 'CLEAN' })
     .overrideProvider(PayPalProvider)
     .useValue(paypal)
     .overrideProvider(JobRuntime)
@@ -307,10 +327,50 @@ it('uses payer ownership and stable operation IDs; capture response cannot confi
   await jobs.payment(order.id);
   await jobs.payment(order.id);
   expect(orderCalls).toBe(1);
+  const readback = vi.spyOn(paypal, 'getOrder').mockRejectedValue(
+    new ProviderError(false, {
+      http: 404,
+      name: 'RESOURCE_NOT_FOUND',
+      issue: 'INVALID_RESOURCE_ID',
+    }),
+  );
+  const unavailable = await request('b', `pacts/${pactId}/payment/capture`, {});
+  expect(unavailable.status).toBe(409);
+  expect((await unavailable.json()).error.message).toContain('stored order');
+  const staleCheckout = await request('b', `pacts/${pactId}/payment/order`, {});
+  expect(staleCheckout.status).toBe(409);
+  expect((await staleCheckout.json()).error.reason).toBe('PAYPAL_ORDER_UNAVAILABLE');
+  expect(orderCalls).toBe(1);
+  expect((await detail()).transaction.order_id).toBe(orderId);
+  expect(captureCalls).toBe(0);
+  expect(
+    (
+      await db.query(
+        "SELECT id FROM paypal_transactions WHERE transaction_id=$1 AND operation='CAPTURE'",
+        [txId],
+      )
+    ).rowCount,
+  ).toBe(0);
+  expect(
+    (await detail()).audit.some(
+      (e: { event_type: string }) => e.event_type === 'PAYMENT_PREFLIGHT_FAILED',
+    ),
+  ).toBe(true);
+  readback.mockRestore();
+  expect((await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data.id).toBe(
+    order.id,
+  );
   const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  const duplicates = await Promise.all(
+    Array.from({ length: 4 }, () => request('b', `pacts/${pactId}/payment/capture`, {})),
+  );
+  for (const response of duplicates) expect((await response.json()).data.id).toBe(capture.id);
+  await jobs.payment(capture.id);
   await jobs.payment(capture.id);
   expect(captureCalls).toBe(1);
   expect((await detail()).transaction.state).toBe('CREATED');
+  expect((await request('b', `pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(404);
+  expect((await (await request('b', `pacts/${pactId}/receipts`)).json()).data).toEqual([]);
 });
 it('rejects fake webhooks and confirms capture only from verified, ownership-matched provider facts', async () => {
   const fakeId = `FAKE-${group}`;
@@ -326,6 +386,42 @@ it('rejects fake webhooks and confirms capture only from verified, ownership-mat
   expect((await webhook(eventId, 'PAYMENT.CAPTURE.COMPLETED', resource)).status).toBe(200);
   await processReceipt(eventId);
   expect((await detail()).transaction.state).toBe('CAPTURED');
+  const reads = vi.spyOn(paypal, 'getCapture');
+  expect((await request('outside', `pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(404);
+  expect((await fetch(`${origin}/v1/pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(403);
+  expect(reads).not.toHaveBeenCalled();
+  const receiptAuditCount = (await detail()).audit.length;
+  for (const who of ['a', 'b']) {
+    const result = await request(who, `pacts/${pactId}/receipts/payment/${txId}`);
+    expect(result.status).toBe(200);
+    expect((await result.json()).data).toMatchObject({
+      kind: 'payment',
+      status: 'COMPLETED',
+      amountMinor: '2550',
+      currency: 'USD',
+      orderId,
+      captureId,
+      refundId: null,
+      occurredAt: '2026-10-07T08:00:00Z',
+    });
+  }
+  expect((await detail()).audit.length).toBe(receiptAuditCount);
+  expect(
+    (await request('a', `pacts/${pactId}/receipts/payment/${crypto.randomUUID()}`)).status,
+  ).toBe(404);
+  const actualCapture = await paypal.getCapture();
+  reads.mockResolvedValueOnce({ ...actualCapture, status: 'PENDING' });
+  expect((await request('a', `pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(409);
+  reads.mockResolvedValueOnce({
+    ...actualCapture,
+    amount: { currency_code: 'EUR', value: '25.50' },
+  });
+  expect((await request('a', `pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(409);
+  reads.mockRestore();
+  const repeated = await request('b', `pacts/${pactId}/payment/capture`, {});
+  expect(repeated.status).toBe(201);
+  expect((await repeated.json()).data.status).toBe('CONFIRMED');
+  expect(captureCalls).toBe(1);
   await webhook(eventId, 'PAYMENT.CAPTURE.COMPLETED', resource);
   await processReceipt(eventId);
   expect(
@@ -361,6 +457,7 @@ it('denies impersonated, unauthorized, stale and missing approvals', async () =>
   const p = await detail();
   await request('b', `pacts/${pactId}/transition`, {
     status: 'DISPUTED',
+    reason: 'The parties need to review the delivered work together.',
     expectedVersion: p.version,
   });
   resolutionId = await propose(0, 'Source assets are missing; propose a thirty percent refund.');
@@ -426,6 +523,7 @@ it('cancels queued stale resolutions, executes only once, and waits for refund c
   await jobs.payment(op.id);
   expect(refundCalls).toBe(1);
   expect((await detail()).transaction.state).toBe('CAPTURED');
+  expect((await request('a', `pacts/${pactId}/receipts/refund/${op.id}`)).status).toBe(404);
   expect(
     (
       await request('a', `pacts/${pactId}/resolutions`, {
@@ -445,6 +543,44 @@ it('cancels queued stale resolutions, executes only once, and waits for refund c
   expect(p.status).toBe('RESOLVED');
   expect(p.transaction.state).toBe('COMPLETED');
   expect(p.transaction.refunded_minor).toBe('765');
+  const callsBeforeReceipt = { captureCalls, refundCalls, orderCalls };
+  confirmedPaymentId = txId;
+  confirmedRefundOperationId = op.id;
+  const refundReceipt = await request('b', `pacts/${pactId}/receipts/refund/${op.id}`);
+  expect(refundReceipt.status).toBe(200);
+  expect((await refundReceipt.json()).data).toMatchObject({
+    kind: 'refund',
+    status: 'COMPLETED',
+    amountMinor: '765',
+    currency: 'USD',
+    orderId,
+    captureId,
+    refundId,
+    occurredAt: '2026-10-07T08:11:00Z',
+  });
+  expect((await request('outside', `pacts/${pactId}/receipts/refund/${op.id}`)).status).toBe(404);
+  expect((await request('a', `pacts/${pactId}/receipts/refund/${txId}`)).status).toBe(404);
+  expect((await request('a', `pacts/${pactId}/receipts/payment/${txId}`)).status).toBe(200);
+  const summaries = (await (await request('a', `pacts/${pactId}/receipts`)).json()).data;
+  expect(summaries.map((r: { kind: string }) => r.kind)).toEqual(['payment', 'refund']);
+  const activity = (await (await request('a', 'activity')).json()).data.filter(
+    (a: { pact_id: string }) => a.pact_id === pactId,
+  );
+  const linked = activity.filter((a: { receipt: unknown }) => a.receipt);
+  expect(linked).toHaveLength(2);
+  expect(linked.find((a: { label: string }) => a.label === 'Payment completed').receipt.id).toBe(
+    txId,
+  );
+  expect(linked.find((a: { label: string }) => a.label === 'Refund completed').receipt.id).toBe(
+    op.id,
+  );
+  expect(
+    activity
+      .filter((a: { event_type: string }) => a.event_type === 'PAYPAL_STATE_CONFIRMED')
+      .map((a: { label: string }) => a.label),
+  ).toContain('Refund state verified with PayPal');
+  expect(activity.every((a: { label: string }) => a.label !== 'paypal state confirmed')).toBe(true);
+  expect({ captureCalls, refundCalls, orderCalls }).toEqual(callsBeforeReceipt);
   expect(
     p.audit.some((a: { event_type: string }) => a.event_type === 'FINANCIAL_ACTION_EXECUTED'),
   ).toBe(true);
@@ -453,6 +589,76 @@ it('cancels queued stale resolutions, executes only once, and waits for refund c
   expect((await detail()).transaction.refunded_minor).toBe('765');
 });
 
+it('does not execute a full refund when one member rejects or remains silent', async () => {
+  captured = false;
+  refunded = false;
+  orderId = `REJECTORDER${group.replaceAll('-', '').slice(0, 12)}`;
+  captureId = `REJECTCAP${group.replaceAll('-', '').slice(0, 12)}`;
+  const created = await request(
+    'a',
+    'pacts',
+    { ...body, title: 'Rejected full refund' },
+    crypto.randomUUID(),
+  );
+  pactId = (await created.json()).data.id;
+  const invites = (await (await request('b', 'me/invitations')).json()).data;
+  await request(
+    'b',
+    `invitations/${invites.find((i: { pact_id: string }) => i.pact_id === pactId).id}/accept`,
+    {},
+  );
+  const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+  await jobs.payment(order.id);
+  const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  await jobs.payment(capture.id);
+  const event = `REJECT-CAPTURE-${group}`;
+  await webhook(event, 'PAYMENT.CAPTURE.COMPLETED', {
+    id: captureId,
+    supplementary_data: { related_ids: { order_id: orderId } },
+  });
+  await processReceipt(event);
+  const current = await detail();
+  await request('a', `pacts/${pactId}/transition`, {
+    status: 'DISPUTED',
+    reason: 'The parties need to review the delivered work together.',
+    expectedVersion: current.version,
+  });
+  const rid = (
+    await (
+      await request('a', `pacts/${pactId}/resolutions`, {
+        type: 'FULL_REFUND',
+        reason: 'One party requests return of the entire captured amount.',
+        expectedVersion: 0,
+      })
+    ).json()
+  ).data.id;
+  const proposal = (await detail()).resolutions[0];
+  const before = refundCalls;
+  expect(
+    (await request('a', `pacts/${pactId}/receipts/payment/${confirmedPaymentId}`)).status,
+  ).toBe(404);
+  expect(
+    (await request('a', `pacts/${pactId}/receipts/refund/${confirmedRefundOperationId}`)).status,
+  ).toBe(404);
+  await request('a', `pacts/${pactId}/resolutions/${rid}/decision`, {
+    decision: 'APPROVED',
+    version: proposal.version,
+    proposalSha256: proposal.proposal.proposalSha256,
+  });
+  expect((await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  await request('b', `pacts/${pactId}/resolutions/${rid}/decision`, {
+    decision: 'REJECTED',
+    version: proposal.version,
+    proposalSha256: proposal.proposal.proposalSha256,
+  });
+  expect((await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  expect((await request('b', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  expect(refundCalls).toBe(before);
+  expect((await detail()).status).toBe('DISPUTED');
+  expect(
+    (await db.query('SELECT id FROM paypal_transactions WHERE resolution_id=$1', [rid])).rowCount,
+  ).toBe(0);
+});
 it('completes an agreed delivery only after both approvals, without refunding the capture', async () => {
   captured = false;
   refunded = false;
@@ -500,4 +706,233 @@ it('completes an agreed delivery only after both approvals, without refunding th
       (a: { event_type: string }) => a.event_type === 'RESOLUTION_CONFIRMED_NO_FINANCIAL_ACTION',
     ),
   ).toBe(true);
+});
+
+it('never retries an ambiguous full refund and reconciles only verified readback with current consent', async () => {
+  captured = false;
+  refunded = false;
+  orderId = `RECONORDER${group.replaceAll('-', '').slice(0, 12)}`;
+  captureId = `RECONCAP${group.replaceAll('-', '').slice(0, 12)}`;
+  refundId = `RECONREF${group.replaceAll('-', '').slice(0, 12)}`;
+  const created = await request(
+    'a',
+    'pacts',
+    { ...body, title: 'Full refund reconciliation lifecycle' },
+    crypto.randomUUID(),
+  );
+  expect(created.status).toBe(201);
+  pactId = (await created.json()).data.id;
+  const invites = (await (await request('b', 'me/invitations')).json()).data;
+  const invite = invites.find((i: { pact_id: string }) => i.pact_id === pactId);
+  await request('b', `invitations/${invite.id}/accept`, {});
+  const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+  await jobs.payment(order.id);
+  const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  await jobs.payment(capture.id);
+  const event = `RECON-CAPTURE-${group}`;
+  await webhook(event, 'PAYMENT.CAPTURE.COMPLETED', {
+    id: captureId,
+    supplementary_data: { related_ids: { order_id: orderId } },
+  });
+  await processReceipt(event);
+  const proposal = await request('a', `pacts/${pactId}/resolutions`, {
+    type: 'FULL_REFUND',
+    reason: 'Both parties agree to return the entire captured test payment.',
+    expectedVersion: 0,
+  });
+  expect(proposal.status).toBe(201);
+  const rid = (await proposal.json()).data.id;
+  expect((await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  await approveBoth(rid);
+  const operation = (
+    await (await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).json()
+  ).data;
+  const callsBefore = refundCalls;
+  ambiguousRefund = true;
+  await expect(jobs.payment(operation.id)).rejects.toThrow(ProviderError);
+  await jobs.payment(operation.id);
+  await jobs.payment(operation.id);
+  expect(refundCalls).toBe(callsBefore + 1);
+  const stored = (
+    await db.query('SELECT status FROM paypal_transactions WHERE id=$1', [operation.id])
+  ).rows[0];
+  expect(stored.status).toBe('NEEDS_RECONCILIATION');
+  expect((await request('a', `pacts/${pactId}/receipts/refund/${operation.id}`)).status).toBe(404);
+  const tx = (await db.query('SELECT version FROM transactions WHERE pact_id=$1', [pactId]))
+    .rows[0];
+  const input = {
+    requestId: crypto.randomUUID(),
+    expectedStatus: 'NEEDS_RECONCILIATION',
+    expectedTransactionVersion: tx.version,
+    providerId: refundId,
+    reason: 'Confirm the completed full refund from authoritative Sandbox readback.',
+  };
+  expect((await request('b', `operations/${operation.id}/reconcile`, input)).status).toBe(403);
+  vi.stubEnv('PACT_OPERATOR_SUBJECTS', `security-${group}-a`);
+  expect(
+    (
+      await request('a', `operations/${operation.id}/reconcile`, {
+        ...input,
+        providerId: 'MISMATCH',
+      })
+    ).status,
+  ).toBe(409);
+  expect((await request('a', `operations/${operation.id}/reconcile`, input)).status).toBe(201);
+  expect((await request('a', `operations/${operation.id}/reconcile`, input)).status).toBe(201);
+  const p = await detail();
+  expect(p.transaction.refunded_minor).toBe('2550');
+  expect(p.transaction.state).toBe('COMPLETED');
+  expect(refundCalls).toBe(callsBefore + 1);
+  expect(
+    p.audit.some((a: { event_type: string }) => a.event_type === 'PAYPAL_OPERATION_RECONCILED'),
+  ).toBe(true);
+  ambiguousRefund = false;
+});
+it.each(['already-captured', 'ambiguous-capture', 'minimal-response', 'failed-readback'])(
+  'reads back %s without a second financial POST',
+  async (scenario) => {
+    captured = false;
+    refunded = false;
+    orderId = `ORDER${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    captureId = `CAP${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    const created = await request(
+      'a',
+      'pacts',
+      { ...body, title: `Capture safety ${scenario}` },
+      crypto.randomUUID(),
+    );
+    pactId = (await created.json()).data.id;
+    const invites = (await (await request('b', 'me/invitations')).json()).data;
+    await request(
+      'b',
+      `invitations/${invites.find((i: { pact_id: string }) => i.pact_id === pactId).id}/accept`,
+      {},
+    );
+    const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+    await jobs.payment(order.id);
+    const callsBefore = captureCalls;
+    const amountMismatch = vi.spyOn(paypal, 'getOrder').mockResolvedValueOnce({
+      id: orderId,
+      status: 'APPROVED',
+      purchase_units: [
+        {
+          custom_id: txId,
+          payee: { merchant_id: 'SANDBOX-MERCHANT' },
+          amount: { currency_code: 'EUR', value: '25.50' },
+          payments: { captures: [] },
+        },
+      ],
+    });
+    expect((await request('b', `pacts/${pactId}/payment/capture`, {})).status).toBe(409);
+    expect(captureCalls).toBe(callsBefore);
+    amountMismatch.mockRestore();
+    if (scenario === 'already-captured') captured = true;
+    const operation = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json())
+      .data;
+    if (scenario === 'ambiguous-capture') {
+      const uncertain = vi.spyOn(paypal, 'capture').mockImplementationOnce(async () => {
+        captureCalls++;
+        captured = true;
+        throw new ProviderError(true);
+      });
+      await expect(jobs.payment(operation.id)).rejects.toThrow(ProviderError);
+      uncertain.mockRestore();
+    } else if (scenario === 'minimal-response' || scenario === 'failed-readback') {
+      const minimal = vi.spyOn(paypal, 'capture').mockImplementationOnce(async () => {
+        captureCalls++;
+        captured = true;
+        return { id: orderId, status: 'COMPLETED', purchase_units: [] };
+      });
+      if (scenario === 'failed-readback') {
+        const originalReadback = paypal.getOrder;
+        let reads = 0;
+        const unavailable = vi.spyOn(paypal, 'getOrder').mockImplementation(async () => {
+          if (++reads > 1) throw new ProviderError(false, { http: 404 });
+          return originalReadback();
+        });
+        await expect(jobs.payment(operation.id)).rejects.toMatchObject({ uncertain: true });
+        unavailable.mockRestore();
+      } else await jobs.payment(operation.id);
+      minimal.mockRestore();
+    } else await jobs.payment(operation.id);
+    await jobs.payment(operation.id);
+    const duplicate = await request('b', `pacts/${pactId}/payment/capture`, {});
+    expect((await duplicate.json()).data.id).toBe(operation.id);
+    expect(captureCalls).toBe(callsBefore + (scenario === 'already-captured' ? 0 : 1));
+    expect((await detail()).transaction.state).toBe('CREATED');
+    const event = `CAPTURE-SAFETY-${crypto.randomUUID()}`;
+    await webhook(event, 'PAYMENT.CAPTURE.COMPLETED', {
+      id: captureId,
+      supplementary_data: { related_ids: { order_id: orderId } },
+    });
+    await processReceipt(event);
+    expect((await detail()).transaction.state).toBe('CAPTURED');
+  },
+);
+
+it('recovers a missed capture webhook for either member without charging again, and unlocks shared receipts', async () => {
+  captured = false;
+  refunded = false;
+  orderId = `READORDER${group.replaceAll('-', '').slice(0, 12)}`;
+  captureId = `READCAP${group.replaceAll('-', '').slice(0, 12)}`;
+  const created = await request(
+    'a',
+    'pacts',
+    { ...body, title: 'Missed webhook recovery' },
+    crypto.randomUUID(),
+  );
+  pactId = (await created.json()).data.id;
+  const invites = (await (await request('b', 'me/invitations')).json()).data;
+  await request(
+    'b',
+    `invitations/${invites.find((i: { pact_id: string }) => i.pact_id === pactId).id}/accept`,
+    {},
+  );
+  const order = (await (await request('b', `pacts/${pactId}/payment/order`, {})).json()).data;
+  await jobs.payment(order.id);
+  const capture = (await (await request('b', `pacts/${pactId}/payment/capture`, {})).json()).data;
+  await jobs.payment(capture.id);
+  const counts = { captureCalls, refundCalls, orderCalls };
+  expect((await detail()).transaction.state).toBe('CREATED');
+  expect((await request('outside', `pacts/${pactId}/payment/refresh`, {})).status).toBe(404);
+  const mismatch = vi.spyOn(paypal, 'getCapture').mockResolvedValueOnce({
+    ...(await paypal.getCapture()),
+    amount: { currency_code: 'USD', value: '999.00' },
+  });
+  expect((await request('a', `pacts/${pactId}/payment/refresh`, {})).status).toBe(409);
+  mismatch.mockRestore();
+  expect((await detail()).transaction.state).toBe('CREATED');
+  expect((await request('a', `pacts/${pactId}/payment/refresh`, {})).status).toBe(201);
+  expect((await request('b', `pacts/${pactId}/payment/refresh`, {})).status).toBe(201);
+  for (const who of ['a', 'b']) {
+    const receipts = (await (await request(who, `pacts/${pactId}/receipts`)).json()).data;
+    expect(receipts).toHaveLength(1);
+    const response = await request(who, `pacts/${pactId}/receipts/payment/${receipts[0].id}`);
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.merchantId).toBe('SANDBOX-MERCHANT');
+  }
+  expect((await detail()).transaction.state).toBe('CAPTURED');
+  expect({ captureCalls, refundCalls, orderCalls }).toEqual(counts);
+  ambiguousRefund = false;
+  refundId = `READREF${group.replaceAll('-', '').slice(0, 12)}`;
+  const proposal = await request('a', `pacts/${pactId}/resolutions`, {
+    type: 'FULL_REFUND',
+    reason: 'Both parties agree to return the completed payment.',
+    expectedVersion: 0,
+  });
+  const rid = (await proposal.json()).data.id;
+  expect((await request('a', `pacts/${pactId}/resolutions/${rid}/execute`, {})).status).toBe(403);
+  await approveBoth(rid);
+  const refund = (
+    await (await request('b', `pacts/${pactId}/resolutions/${rid}/execute`, {})).json()
+  ).data;
+  await jobs.payment(refund.id);
+  const submittedRefundCalls = refundCalls;
+  expect((await detail()).transaction.state).toBe('CAPTURED');
+  expect((await request('a', `pacts/${pactId}/payment/refresh`, {})).status).toBe(201);
+  expect((await request('b', `pacts/${pactId}/payment/refresh`, {})).status).toBe(201);
+  expect((await detail()).transaction.state).toBe('COMPLETED');
+  for (const who of ['a', 'b'])
+    expect((await (await request(who, `pacts/${pactId}/receipts`)).json()).data).toHaveLength(2);
+  expect(refundCalls).toBe(submittedRefundCalls);
 });

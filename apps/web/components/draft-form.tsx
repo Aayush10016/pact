@@ -78,7 +78,7 @@ function PersistentForm() {
         <div>
           <p className="eyebrow">START WITH COMMON GROUND.</p>
           <h1>Make the commitment.</h1>
-          <p className="muted">Define what you�re agreeing to, before the work begins.</p>
+          <p className="muted">Define what you’re agreeing to, before the work begins.</p>
         </div>
       </div>
       <div className="form-layout">
@@ -96,10 +96,10 @@ function PersistentForm() {
               />
             </label>
             <label>
-              Other party�s email
+              Other party’s email
               <input
                 name="otherParty"
-                aria-label="Other party�s email"
+                aria-label="Other party’s email"
                 type="email"
                 required
                 aria-describedby="party-help"
@@ -199,7 +199,7 @@ function PersistentForm() {
               Cancel
             </Link>
             <button className="button" disabled={busy} type="submit">
-              {busy ? 'Saving the agreement�' : 'Create Pact'}
+              {busy ? 'Saving the agreement…' : 'Create Pact'}
               <ArrowRight size={16} />
             </button>
           </div>
@@ -211,7 +211,7 @@ function PersistentForm() {
             is a better beginning.
           </h2>
           <p>
-            Be specific about what will be delivered, when it�s due, and what both sides need to
+            Be specific about what will be delivered, when it’s due, and what both sides need to
             approve.
           </p>
           <div className="notice">

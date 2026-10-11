@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException, ConflictException } from '@nestjs/common';
 import { z } from 'zod';
 export function decimalAmount(minor: string) {
   const n = BigInt(minor);
@@ -11,9 +11,54 @@ export function minorAmount(decimal: string) {
   return (BigInt(a!) * 100n + BigInt(b!)).toString();
 }
 export class ProviderError extends Error {
-  constructor(readonly uncertain: boolean) {
+  constructor(
+    readonly uncertain: boolean,
+    readonly diagnostic: {
+      http?: number;
+      name?: string;
+      issue?: string;
+      debugId?: string;
+    } = {},
+  ) {
     super('Payment provider unavailable');
   }
+  get userMessage(): string {
+    if (this.uncertain)
+      return 'PayPal returned an uncertain result. Refresh the record and reconcile the existing operation before trying another payment.';
+    if (this.diagnostic.http === 404)
+      return 'PayPal cannot find the stored resource with the configured Sandbox app. Verify the app and resource in PayPal before continuing. Payment has not been confirmed.';
+    if ([401, 403].includes(this.diagnostic.http ?? 0))
+      return 'PayPal rejected the Sandbox app credentials or permissions. Check the local configuration before continuing.';
+    return 'PayPal could not verify this request. Check the existing order in PayPal and try again after resolving the provider error.';
+  }
+}
+export class CheckoutUnavailableError extends ProviderError {
+  get userMessage() {
+    return 'The stored order cannot be accessed with the current PayPal Sandbox app. Changing app credentials does not transfer an existing checkout to the new merchant. Restore the original app to continue this order, or verify that it has no completed payment before creating a new Pact and checkout with the current app. This Pact has no confirmed payment.';
+  }
+}
+async function providerFailure(response: Response, uncertain: boolean) {
+  // Only machine identifiers are retained. Never copy provider messages, headers, or bodies to logs.
+  const identifier = (value: unknown) =>
+    typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : undefined;
+  let detail: {
+    name?: unknown;
+    error?: unknown;
+    debug_id?: unknown;
+    details?: { issue?: unknown }[];
+  } = {};
+  try {
+    const raw = await response.text();
+    if (raw.length <= 65536) detail = JSON.parse(raw);
+  } catch {
+    /* The status remains useful when the provider sends malformed JSON. */
+  }
+  return new ProviderError(uncertain, {
+    http: response.status,
+    name: identifier(detail?.name ?? detail?.error),
+    issue: identifier(detail?.details?.[0]?.issue),
+    debugId: identifier(detail?.debug_id),
+  });
 }
 export const resourceSchema = z
   .object({
@@ -38,7 +83,8 @@ export const orderSchema = z
       .array(
         z.object({
           custom_id: z.string().optional(),
-          amount: z.object({ currency_code: z.string(), value: z.string() }),
+          payee: z.object({ merchant_id: z.string().max(100).optional() }).optional(),
+          amount: z.object({ currency_code: z.string(), value: z.string() }).optional(),
           payments: z.object({ captures: z.array(resourceSchema).optional() }).optional(),
         }),
       )
@@ -46,6 +92,39 @@ export const orderSchema = z
     links: z.array(z.object({ href: z.url(), rel: z.string() })).optional(),
   })
   .passthrough();
+export function validateCaptureOrder(
+  order: z.infer<typeof orderSchema>,
+  tx: {
+    id: string;
+    order_id: string;
+    amount_minor: string;
+    currency: string;
+  },
+) {
+  const unit = order.purchase_units?.[0];
+  if (
+    !unit ||
+    order.id !== tx.order_id ||
+    order.purchase_units?.length !== 1 ||
+    unit.custom_id !== tx.id ||
+    (order.intent !== undefined && order.intent !== 'CAPTURE')
+  )
+    throw new ConflictException(
+      'PayPal order does not match this payment. Reconciliation is required.',
+    );
+  try {
+    if (
+      !unit.amount ||
+      unit.amount.currency_code !== tx.currency ||
+      minorAmount(unit.amount.value) !== tx.amount_minor
+    )
+      throw new Error('Amount mismatch');
+  } catch {
+    throw new ConflictException(
+      'PayPal order amount or currency differs from the Pact. No capture is allowed.',
+    );
+  }
+}
 export interface PaymentProvider {
   createOrder(
     id: string,
@@ -100,10 +179,15 @@ export class PayPalProvider implements PaymentProvider {
     }).catch(() => {
       throw new ProviderError(false);
     });
-    if (!response.ok) throw new ProviderError(false);
-    const parsed = z
-      .object({ access_token: z.string(), expires_in: z.number().positive() })
-      .parse(await response.json());
+    if (!response.ok) throw await providerFailure(response, false);
+    const parsed = await response
+      .json()
+      .then((body: unknown) =>
+        z.object({ access_token: z.string(), expires_in: z.number().positive() }).parse(body),
+      )
+      .catch(() => {
+        throw new ProviderError(false);
+      });
     this.token = {
       value: parsed.access_token,
       expires: Date.now() + Math.max(0, Math.min(parsed.expires_in, 3600) - 60) * 1000,
@@ -117,6 +201,7 @@ export class PayPalProvider implements PaymentProvider {
       headers: {
         Authorization: `Bearer ${token}`,
         'content-type': 'application/json',
+        Prefer: 'return=representation',
         ...(key ? { 'PayPal-Request-Id': key } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -125,10 +210,14 @@ export class PayPalProvider implements PaymentProvider {
       throw new ProviderError(method === 'POST');
     });
     if (!response.ok)
-      throw new ProviderError(
-        method === 'POST' && (response.status >= 500 || response.status === 429),
+      throw await providerFailure(
+        response,
+        method === 'POST' &&
+          (response.status >= 500 || response.status === 429 || response.status === 422),
       );
-    const text = await response.text();
+    const text = await response.text().catch(() => {
+      throw new ProviderError(method === 'POST');
+    });
     if (text.length > 1024 * 1024) throw new ProviderError(method === 'POST');
     try {
       return JSON.parse(text);
@@ -177,9 +266,11 @@ export class PayPalProvider implements PaymentProvider {
     );
   }
   async getOrder(id: string) {
-    return orderSchema.parse(
+    const parsed = orderSchema.safeParse(
       await this.request(`/v2/checkout/orders/${encodeURIComponent(id)}`, 'GET'),
     );
+    if (!parsed.success) throw new ProviderError(false, { name: 'INVALID_PROVIDER_RESPONSE' });
+    return parsed.data;
   }
   async getCapture(id: string) {
     return resourceSchema.parse(

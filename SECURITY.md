@@ -46,6 +46,15 @@ Live provider/credential lifecycle validation is outstanding. No production-mone
 
 ## Secrets
 
+Phase 3 local evidence uses private, versioned MinIO and mandatory ClamAV quarantine before
+extraction/AI/download. Scanner errors fail closed. Document/image processing is bounded and
+OCR text is untrusted. Exact citations and quoted factual claims are validated independently
+in Python and the API. AI has no payment credentials or execution tools. URL ingestion stays disabled.
+Operators require authenticated Clerk subjects on an explicit server allowlist; reconciliation
+only reads PayPal and verifies persisted current consent, provider linkage and integer amounts.
+The free HTTPS tunnel forwards only bounded webhook POSTs through a restricted relay. Retention
+is conservative and automatic deletion is disabled. See [Phase 3 details](docs/PHASE_3.md).
+
 `.env` is ignored. `.env.example` contains empty integration fields and clearly disposable local
 database credentials. Never reuse those defaults in deployment. Frontend public variables must
 never contain private keys. Docker contexts exclude env files. CI needs no real integrations.
@@ -55,3 +64,11 @@ The AI container receives no PayPal secrets; the API receives the configured pri
 
 Do not put credentials or private evidence in a public issue. Report through the repository
 owner's private GitHub channel. No dedicated security email has been provisioned yet.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).
+
+## Local credential rotation (2026-10-11)
+
+Local PostgreSQL owner/runtime and MinIO passwords are generated privately in the ignored `.env`. Compose requires these variables without password defaults; `.env.example` leaves them blank. `scripts/setup-local-env.mjs` generates only missing values and preserves existing provider configuration. It does not rotate an existing database: initialized PostgreSQL roles must be changed explicitly, and dependent services restarted with the matching values. Docker build contexts exclude `.env` and private recovery files. Historical local password defaults were revoked in the running database/storage; old logins were checked and rejected. History is retained, and the old alert can be marked revoked after verification. No provider keys were rotated or published.

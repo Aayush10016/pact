@@ -2,6 +2,8 @@
 import Link from 'next/link';
 import { FileText, ArrowUpRight } from 'lucide-react';
 import { AccessGate, useResource, ResourceState } from './session';
+import type { ActivityRecord } from '@pact/types';
+import { formatMoney } from '@pact/shared';
 export function ActivityView() {
   return (
     <AccessGate>
@@ -10,10 +12,7 @@ export function ActivityView() {
   );
 }
 function Activity() {
-  const r =
-    useResource<
-      Array<{ id: string; pact_id: string; title: string; event_type: string; created_at: string }>
-    >('activity');
+  const r = useResource<ActivityRecord[]>('activity');
   return (
     <>
       <div className="page-heading">
@@ -37,12 +36,27 @@ function Activity() {
               <span className="mono">{new Date(a.created_at).toLocaleDateString()}</span>
               <FileText size={20} />
               <div>
-                <h2>{a.event_type.replaceAll('_', ' ').toLowerCase()}</h2>
+                <h2>{a.label}</h2>
                 <p>{a.title}</p>
+                {a.receipt && (
+                  <p>
+                    {formatMoney({
+                      amountMinor: a.receipt.amountMinor,
+                      currency: a.receipt.currency,
+                    })}{' '}
+                    {a.receipt.currency} · {a.receipt.kind === 'payment' ? 'Payment' : 'Refund'}{' '}
+                    confirmed by PayPal
+                  </p>
+                )}
               </div>
-              <Link href={`/workspace/pacts/${a.pact_id}`} aria-label={`Open ${a.title}`}>
-                <ArrowUpRight size={20} />
-              </Link>
+              {a.receipt && (
+                <Link
+                  href={`/workspace/pacts/${a.pact_id}/receipts/${a.receipt.kind}/${a.receipt.id}`}
+                  aria-label={`View ${a.receipt.kind} receipt for ${a.title}`}
+                >
+                  <ArrowUpRight size={20} aria-hidden="true" />
+                </Link>
+              )}
             </article>
           ))}
         </div>

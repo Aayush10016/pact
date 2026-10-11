@@ -11,6 +11,24 @@ import { Database, member, audit } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import { activityLabel } from '../payments/activity-label';
+type ActivityContext = {
+  id: string;
+  pact_id: string;
+  title: string;
+  event_type: string;
+  created_at: Date;
+  operation: string | null;
+  decision: string | null;
+  reason: string | null;
+  actor_name: string | null;
+  provider_event: string | null;
+  receipt_id: string | null;
+  receipt_operation: string | null;
+  amount_minor: string;
+  currency: string;
+  transaction_id: string;
+};
 export function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new BadRequestException('Check the request fields.');
@@ -179,12 +197,14 @@ export class LifecycleService {
           [id],
         )
       ).rows;
-      const history = (
-        await db.query(
-          'SELECT id,event_type,created_at FROM audit_events WHERE pact_id=$1 ORDER BY created_at DESC LIMIT 100',
-          [id],
-        )
-      ).rows;
+      const supportCase =
+        (
+          await db.query(
+            'SELECT id,status FROM support_cases WHERE pact_id=$1 ORDER BY created_at DESC LIMIT 1',
+            [id],
+          )
+        ).rows[0] ?? null;
+      const history = await this.activity(user, id, db);
       return {
         ...p,
         parties,
@@ -194,6 +214,7 @@ export class LifecycleService {
         analyses,
         resolutions,
         audit: history,
+        supportCase,
       };
     });
   }
@@ -265,15 +286,20 @@ export class LifecycleService {
         .object({
           status: z.enum(['DISPUTED', 'CANCELLED']),
           expectedVersion: z.number().int().positive(),
+          reason: z.string().trim().min(10).max(2000).optional(),
         })
-        .strict(),
+        .strict()
+        .refine((v) => v.status !== 'DISPUTED' || !!v.reason),
       value,
     );
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
       if (p.version !== data.expectedVersion)
         throw new ConflictException('Pact changed. Refresh before acting.');
-      if (!transitions[p.status]?.includes(data.status))
+      if (
+        !transitions[p.status]?.includes(data.status) &&
+        !(p.status === 'DISPUTED' && data.status === 'DISPUTED')
+      )
         throw new ConflictException('Invalid Pact transition.');
       const payment = await db.query('SELECT state FROM transactions WHERE pact_id=$1', [id]);
       if (
@@ -291,16 +317,68 @@ export class LifecycleService {
         id,
         data.status,
       ]);
-      await audit(db, id, user.id, `PACT_${data.status}`);
+      await audit(
+        db,
+        id,
+        user.id,
+        p.status === 'DISPUTED' ? 'PACT_RESOLUTION_CONCERN' : `PACT_${data.status}`,
+        data.reason ? { reason: data.reason } : {},
+      );
       return { status: data.status };
     });
   }
-  async activity(user: Identity) {
-    return (
-      await this.db.query(
-        'SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title FROM audit_events a JOIN pacts p ON p.id=a.pact_id JOIN parties r ON r.pact_id=p.id WHERE r.user_id=$1 ORDER BY a.created_at DESC LIMIT 100',
-        [user.id],
+  async activity(user: Identity, pactId: string | null = null, client?: PoolClient) {
+    const query = (sql: string, values: (string | null)[]) =>
+      client
+        ? client.query<ActivityContext>(sql, values)
+        : this.db.query<ActivityContext>(sql, values);
+    const rows = (
+      await query(
+        `SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN','HUMAN_REVIEW_REQUESTED','HUMAN_REVIEW_DECIDED') THEN a.metadata->>'reason' END reason,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN','HUMAN_REVIEW_REQUESTED','HUMAN_REVIEW_DECIDED') THEN actor.display_name END actor_name,
+          COALESCE(op.operation,CASE WHEN res.proposal->>'type' IN ('FULL_REFUND','PARTIAL_REFUND') THEN 'REFUND' END) operation,
+          a.metadata->>'decision' decision,
+          COALESCE(a.metadata->>'providerEventType',we.event_type) provider_event,
+          final.id receipt_id,final.operation receipt_operation,final.amount_minor,tx.currency,tx.id transaction_id
+          FROM audit_events a JOIN pacts p ON p.id=a.pact_id JOIN parties r ON r.pact_id=p.id
+          LEFT JOIN users actor ON actor.id=a.actor_id
+          LEFT JOIN paypal_transactions op ON op.id::text=a.metadata->>'operationId'
+            AND EXISTS(SELECT 1 FROM transactions ot WHERE ot.id=op.transaction_id AND ot.pact_id=a.pact_id)
+          LEFT JOIN resolutions res ON res.id::text=a.metadata->>'resolutionId' AND res.pact_id=a.pact_id
+          LEFT JOIN transactions tx ON tx.pact_id=a.pact_id
+          LEFT JOIN LATERAL (SELECT w.event_type FROM audit_events received JOIN paypal_webhook_events w
+            ON w.provider_event_id=received.metadata->>'paypalEventId'
+            WHERE received.pact_id=a.pact_id AND received.event_type='PAYPAL_WEBHOOK_RECEIVED'
+            AND (received.id=a.id OR received.created_at=a.created_at)
+            ORDER BY received.created_at DESC LIMIT 1) we ON true
+          LEFT JOIN paypal_transactions final ON final.transaction_id=tx.id AND final.status='CONFIRMED'
+            AND tx.order_id IS NOT NULL AND tx.capture_id IS NOT NULL
+            AND ((a.event_type='PAYMENT_CAPTURED' AND final.operation='CAPTURE' AND a.metadata->>'transactionId'=tx.id::text)
+              OR (a.event_type='FINANCIAL_ACTION_EXECUTED' AND final.operation='REFUND' AND a.metadata->>'operationId'=final.id::text AND final.paypal_id IS NOT NULL)
+              OR (a.event_type='PAYPAL_OPERATION_RECONCILED' AND a.metadata->>'operationId'=final.id::text
+                AND final.operation IN ('CAPTURE','REFUND') AND final.paypal_id IS NOT NULL))
+          WHERE r.user_id=$1 AND ($2::uuid IS NULL OR p.id=$2) ORDER BY a.created_at DESC,a.id DESC LIMIT 100`,
+        [user.id, pactId],
       )
     ).rows;
+    return rows.map((a) => ({
+      id: a.id,
+      pact_id: a.pact_id,
+      title: a.title,
+      event_type: a.event_type,
+      created_at: a.created_at,
+      label: activityLabel(a.event_type, a.operation, a.provider_event, a.decision),
+      ...(a.reason ? { reason: a.reason } : {}),
+      ...(a.actor_name ? { actorName: a.actor_name } : {}),
+      receipt: a.receipt_id
+        ? {
+            id: a.receipt_operation === 'CAPTURE' ? a.transaction_id : a.receipt_id,
+            kind: a.receipt_operation === 'CAPTURE' ? 'payment' : 'refund',
+            amountMinor: a.amount_minor,
+            currency: a.currency,
+          }
+        : null,
+    }));
   }
 }

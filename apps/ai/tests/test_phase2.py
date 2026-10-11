@@ -38,7 +38,8 @@ result = {
             "commitmentId": "c1",
             "status": "UNCLEAR",
             "evidenceIds": ["e1"],
-            "claim": "Party claims completion",
+            "claim": "A party claims completion.",
+            "citations": [{"evidenceId": "e1", "quote": "A party claims completion."}],
             "inference": "Delivery is not established",
             "uncertainty": "Source files missing",
         }

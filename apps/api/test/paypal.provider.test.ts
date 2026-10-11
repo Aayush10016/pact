@@ -1,8 +1,109 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { PayPalProvider, decimalAmount, minorAmount } from '../src/payments/paypal.provider';
+import {
+  PayPalProvider,
+  ProviderError,
+  validateCaptureOrder,
+  decimalAmount,
+  minorAmount,
+} from '../src/payments/paypal.provider';
+it('rejects wrong currency, amount, ownership, intent, and extra units before capture', () => {
+  const tx = { id: 'tx', order_id: 'ORDER1', amount_minor: '500000', currency: 'USD' };
+  const unit = { custom_id: 'tx', amount: { currency_code: 'USD', value: '5000.00' } };
+  const order = { id: 'ORDER1', status: 'APPROVED', intent: 'CAPTURE', purchase_units: [unit] };
+  expect(() => validateCaptureOrder(order, tx)).not.toThrow();
+  for (const invalid of [
+    { ...order, id: 'OTHER' },
+    { ...order, intent: 'AUTHORIZE' },
+    { ...order, purchase_units: [unit, unit] },
+    { ...order, purchase_units: [{ ...unit, custom_id: 'other' }] },
+    { ...order, purchase_units: [{ ...unit, amount: { ...unit.amount, currency_code: 'EUR' } }] },
+    { ...order, purchase_units: [{ ...unit, amount: { ...unit.amount, value: '5000.01' } }] },
+  ])
+    expect(() => validateCaptureOrder(invalid, tx)).toThrow();
+});
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+it.each([401, 403, 404, 422, 500])(
+  'retains safe diagnostics for HTTP %s without provider text or secrets',
+  async (status) => {
+    setup();
+    vi.stubGlobal('fetch', async (url: string) =>
+      Response.json(
+        url.endsWith('/token')
+          ? { access_token: 'test-token', expires_in: 3600 }
+          : {
+              name: 'RESOURCE_NOT_FOUND',
+              debug_id: 'abc123def4567',
+              details: [{ issue: 'INVALID_RESOURCE_ID', description: 'test-secret' }],
+              message: 'test-secret',
+            },
+        { status: url.endsWith('/token') ? 200 : status },
+      ),
+    );
+    const error = await new PayPalProvider().getOrder('OLDORDER').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(JSON.stringify(error)).not.toContain('test-secret');
+    expect((error as ProviderError).diagnostic.http).toBe(status);
+    expect((error as ProviderError).userMessage).not.toContain('test-secret');
+  },
+);
+it('requests a full capture representation once with the durable request ID', async () => {
+  setup();
+  const calls: RequestInit[] = [];
+  vi.stubGlobal('fetch', async (url: string, options: RequestInit) => {
+    calls.push(options);
+    return Response.json(
+      url.endsWith('/token')
+        ? { access_token: 'test-token', expires_in: 3600 }
+        : {
+            id: 'ORDER1',
+            status: 'COMPLETED',
+            purchase_units: [
+              {
+                custom_id: 'tx',
+                amount: { currency_code: 'USD', value: '5000.00' },
+                payments: {
+                  captures: [
+                    {
+                      id: 'CAP1',
+                      status: 'COMPLETED',
+                      amount: { currency_code: 'USD', value: '5000.00' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+    );
+  });
+  expect((await new PayPalProvider().capture('ORDER1', 'durable-id')).status).toBe('COMPLETED');
+  expect(calls).toHaveLength(2);
+  expect(calls[1]?.headers).toMatchObject({
+    'PayPal-Request-Id': 'durable-id',
+    Prefer: 'return=representation',
+  });
+});
+it('fails safely on rejected or malformed OAuth and ambiguous capture responses', async () => {
+  setup();
+  vi.stubGlobal('fetch', async () =>
+    Response.json({ error: 'invalid_client', message: 'test-secret' }, { status: 401 }),
+  );
+  await expect(new PayPalProvider().accessToken()).rejects.toMatchObject({
+    uncertain: false,
+    diagnostic: { http: 401 },
+  });
+  vi.stubGlobal('fetch', async () => Response.json({ access_token: 123 }));
+  await expect(new PayPalProvider().accessToken()).rejects.toBeInstanceOf(ProviderError);
+  vi.stubGlobal('fetch', async (url: string) =>
+    url.endsWith('/token')
+      ? Response.json({ access_token: 'test-token', expires_in: 3600 })
+      : new Response('not JSON', { status: 200 }),
+  );
+  await expect(new PayPalProvider().capture('ORDER1', 'durable-id')).rejects.toMatchObject({
+    uncertain: true,
+  });
 });
 function setup() {
   vi.stubEnv('PAYPAL_CLIENT_ID', 'test-only');

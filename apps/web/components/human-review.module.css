@@ -1,0 +1,57 @@
+.panel,
+.conversation {
+  margin-top: 2rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.caseList {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.caseList li {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.messages {
+  display: grid;
+  gap: 1rem;
+  max-height: 32rem;
+  overflow-y: auto;
+}
+.messages article {
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.messages time {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+.messageBody {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.evidence pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+.conversation label {
+  display: grid;
+  gap: 0.5rem;
+}
+.conversation input[type='checkbox'] {
+  width: auto;
+}
+.conversation select {
+  max-width: 100%;
+}

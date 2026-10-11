@@ -2,8 +2,11 @@
 
 import io
 import json
+import subprocess
 import sys
+import tempfile
 import zipfile
+from pathlib import Path
 from xml.etree import ElementTree
 
 
@@ -46,6 +49,43 @@ def extract(data: bytes, mime: str) -> str:
                 raise ValueError("XML_REJECTED")
             node = ElementTree.fromstring(xml)
             text = " ".join(node.itertext())
+    elif mime in {"image/png", "image/jpeg"}:
+        if (mime == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n")) or (
+            mime == "image/jpeg" and not data.startswith(b"\xff\xd8\xff")
+        ):
+            raise ValueError("IMAGE_TYPE_MISMATCH")
+        from PIL import Image
+
+        Image.MAX_IMAGE_PIXELS = 8_000_000
+        with Image.open(io.BytesIO(data)) as image:
+            if (
+                image.format not in {"PNG", "JPEG"}
+                or image.width * image.height > 8_000_000
+                or getattr(image, "n_frames", 1) != 1
+            ):
+                raise ValueError("IMAGE_LIMIT")
+            image.verify()
+        with (
+            Image.open(io.BytesIO(data)) as image,
+            tempfile.TemporaryDirectory(prefix="pact-ocr-") as folder,
+        ):
+            path = Path(folder) / "evidence.png"
+            image.convert("RGB").save(path)
+            output = Path(folder) / "output"
+            subprocess.run(
+                ["tesseract", str(path), str(output), "--psm", "6", "-l", "eng"],
+                check=True,
+                timeout=8,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            result = output.with_suffix(".txt")
+            if result.stat().st_size > 100_000:
+                raise ValueError("OCR_OUTPUT_LIMIT")
+            text = (
+                "[Untrusted OCR transcription; image must be reviewed by humans.]\n"
+                + result.read_text(encoding="utf-8")
+            )
     else:
         raise ValueError("VISUAL_EXTRACTION_UNAVAILABLE")
     if not text.strip():

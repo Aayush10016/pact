@@ -5,6 +5,7 @@ import '@fontsource-variable/manrope';
 import '@fontsource-variable/source-serif-4';
 import '@fontsource/ibm-plex-mono/400.css';
 import './globals.css';
+import './workspace-type.css';
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: { default: 'Pact — A promise, made clear.', template: '%s · Pact' },
@@ -35,6 +36,11 @@ function IdentityBoundary({ children }: { children: React.ReactNode }) {
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       appearance={{
+        elements: {
+          headerSubtitle: { color: '#566860' },
+          dividerText: { color: '#566860' },
+          formButtonPrimary: { backgroundImage: 'none', boxShadow: 'none' },
+        },
         variables: {
           colorPrimary: '#215C49',
           colorBackground: '#F7F5EF',

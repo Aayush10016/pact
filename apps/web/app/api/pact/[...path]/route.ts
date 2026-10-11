@@ -3,7 +3,11 @@ export const dynamic = 'force-dynamic';
 async function proxy(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const joined = path.join('/');
-  if (!/^(?:pacts|me|activity|invitations|capabilities)(?:\/[a-zA-Z0-9_-]+)*$/.test(joined))
+  if (
+    !/^(?:pacts|me|activity|invitations|capabilities|support|staff|sellers)(?:\/[a-zA-Z0-9_-]+)*$/.test(
+      joined,
+    )
+  )
     return Response.json({ error: { message: 'Route not found.' } }, { status: 404 });
   const token = request.headers.get('authorization');
   if (!token?.startsWith('Bearer ') || token.length > 8192)
@@ -54,7 +58,12 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
     });
   } catch {
     return Response.json(
-      { error: { message: 'Pact API is unavailable. Try again shortly.' } },
+      {
+        error: {
+          message:
+            'Pact could not confirm the server response. Your request may already be saved. Refresh the record before retrying; do not start another payment.',
+        },
+      },
       { status: 503 },
     );
   }

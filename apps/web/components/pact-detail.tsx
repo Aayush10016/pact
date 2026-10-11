@@ -1,10 +1,14 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { HumanReview } from './human-review';
+import { PactReview } from './seller-reviews';
+import styles from './record-panels.module.css';
+import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
 import { groundedAssessmentSchema, type PactRecord } from '@pact/types';
 import { formatMoney } from '@pact/shared';
-import { AccessGate, useApi, useResource, ResourceState } from './session';
+import { AccessGate, ApiError, useApi, useResource, ResourceState } from './session';
+import { FinancialRecords } from './financial-receipt';
 const sections = ['Commitments', 'Evidence', 'Assessment', 'Resolution'] as const;
 type Capabilities = { storage: boolean; advisory: boolean; paypal: boolean; workers: boolean };
 export function PactDetail({ id }: { id: string }) {
@@ -24,6 +28,9 @@ function PrivateDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [checkoutUnavailable, setCheckoutUnavailable] = useState(false);
+  const actionPending = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [operation, setOperation] = useState<{
     id: string;
     status: string;
@@ -40,6 +47,39 @@ function PrivateDetail({ id }: { id: string }) {
     const timer = setInterval(reload, 5000);
     return () => clearInterval(timer);
   }, [waiting, reload]);
+  useEffect(() => {
+    if (
+      !p?.transaction.confirmation_pending ||
+      !['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state)
+    )
+      return;
+    let active = true;
+    let checking = false;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      if (checking || attempts >= 6) return;
+      checking = true;
+      attempts++;
+      void api(`pacts/${id}/payment/refresh`, { method: 'POST', body: '{}' })
+        .then(() => {
+          if (active) reload();
+        })
+        .catch(() => {
+          if (active)
+            setError(
+              'Automatic payment confirmation could not finish. Use Refresh record to retry without charging again.',
+            );
+          attempts = 6;
+        })
+        .finally(() => {
+          checking = false;
+        });
+    }, 15000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [api, id, p?.transaction.confirmation_pending, p?.transaction.state, reload]);
   useEffect(() => {
     if (
       !operation ||
@@ -67,6 +107,8 @@ function PrivateDetail({ id }: { id: string }) {
     };
   }, [api, id, operation, reload]);
   async function action(path: string, value: unknown = {}, label = 'Record saved.') {
+    if (actionPending.current) return null;
+    actionPending.current = true;
     setBusy(path);
     setError('');
     setSuccess('');
@@ -79,9 +121,14 @@ function PrivateDetail({ id }: { id: string }) {
       reload();
       return result;
     } catch (e) {
+      if (e instanceof ApiError && e.reason === 'PAYPAL_ORDER_UNAVAILABLE') {
+        setCheckoutUnavailable(true);
+        setOperation(null);
+      }
       setError(e instanceof Error ? e.message : 'Action could not be completed.');
       return null;
     } finally {
+      actionPending.current = false;
       setBusy('');
     }
   }
@@ -91,7 +138,37 @@ function PrivateDetail({ id }: { id: string }) {
       {},
       'Payment request queued. Confirmation comes from verified PayPal events.',
     );
-    if (result) setOperation(result);
+    if (result) {
+      setCheckoutUnavailable(false);
+      setOperation(result);
+      if (result.status !== 'QUEUED')
+        setSuccess(
+          'Existing payment operation returned. Its status is shown below. No new payment request was created.',
+        );
+    }
+  }
+  async function refreshRecord() {
+    setRefreshing(true);
+    setError('');
+    setSuccess('');
+    try {
+      if (
+        p?.transaction.confirmation_pending &&
+        ['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state)
+      )
+        await api(`pacts/${id}/payment/refresh`, { method: 'POST', body: '{}' });
+      const [loaded, configured] = await Promise.all([record.refresh(), capabilities.refresh()]);
+      if (operation)
+        setOperation(await api<typeof operation>(`pacts/${id}/payment/operations/${operation.id}`));
+      if (!loaded || !configured) throw new Error('The record could not refresh. Try again.');
+      setSuccess(
+        'Record refreshed from the server. Payment changes require verified PayPal confirmation.',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The record could not refresh.');
+    } finally {
+      setRefreshing(false);
+    }
   }
   async function download(vid: string) {
     setError('');
@@ -159,6 +236,10 @@ function PrivateDetail({ id }: { id: string }) {
   );
   const party = p.parties.find((r) => r.user_id === me.data?.id);
   const isPayer = party?.role === p.transaction.payer_role;
+  const resolutionRequest = p.audit.find((a) =>
+    ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN', 'HUMAN_REVIEW_REQUESTED'].includes(a.event_type),
+  );
+  const reviewOpen = !!p.supportCase && ['OPEN', 'IN_REVIEW'].includes(p.supportCase.status);
   const approval = current?.approvals.find((a) => a.user_id === me.data?.id);
   const approved =
     current?.approvals.length === 2 && current.approvals.every((a) => a.decision === 'APPROVED');
@@ -183,7 +264,7 @@ function PrivateDetail({ id }: { id: string }) {
                 <span className={`avatar ${i ? 'clay' : ''}`}>
                   {r.display_name.slice(0, 2).toUpperCase()}
                 </span>{' '}
-                {r.display_name} � Party {i ? 'B' : 'A'}
+                {r.display_name} · Party {i ? 'B' : 'A'}
               </span>
             ))}
             {p.parties.length === 1 && <span>Counterparty acceptance pending</span>}
@@ -191,7 +272,7 @@ function PrivateDetail({ id }: { id: string }) {
         </div>
         <div>
           <span className={`badge ${p.status === 'DISPUTED' ? 'warning' : ''}`}>
-            {p.status.toLowerCase()}
+            {p.status === 'DISPUTED' ? 'Resolution requested' : p.status.toLowerCase()}
           </span>
           <p className="mono detail-money">
             {formatMoney({
@@ -200,20 +281,17 @@ function PrivateDetail({ id }: { id: string }) {
             })}
           </p>
           <p className="muted">
-            Payment: {p.transaction.state.toLowerCase()} � {p.transaction.currency}
+            {p.transaction.state === 'COMPLETED' && BigInt(p.transaction.refunded_minor ?? '0') > 0n
+              ? 'Payment captured · Refund completed'
+              : `Payment: ${p.transaction.state.toLowerCase()}`}{' '}
+            · {p.transaction.currency}
           </p>
         </div>
       </div>
       <div className="section-toolbar">
         <span className="mono">RECORD VERSION {p.version}</span>
-        <button
-          className="text-link"
-          onClick={() => {
-            reload();
-            capabilities.reload();
-          }}
-        >
-          Refresh record
+        <button className="text-link" disabled={refreshing} onClick={() => void refreshRecord()}>
+          {refreshing ? 'Refreshing record…' : 'Refresh record'}
         </button>
       </div>
       {error && (
@@ -225,6 +303,20 @@ function PrivateDetail({ id }: { id: string }) {
         <p className="notice" role="status">
           {success}
         </p>
+      )}
+      {checkoutUnavailable && (
+        <div className="notice" role="status">
+          <div>
+            <p>
+              Keep this record for its history. If you changed merchant apps and have verified that
+              the old checkout has no completed payment, create a new Pact, have both parties accept
+              it, then create its Sandbox checkout. Approval at PayPal is separate from capture.
+            </p>
+            <Link className="button secondary" href="/workspace/new">
+              Create a new Pact for the current Sandbox app
+            </Link>
+          </div>
+        </div>
       )}
       <div className="detail-layout">
         <div>
@@ -239,7 +331,9 @@ function PrivateDetail({ id }: { id: string }) {
               </button>
             ))}
           </nav>
-          <section className="detail-content">
+          <section
+            className={`detail-content ${section === 'Assessment' || section === 'Resolution' ? styles.results : ''}`}
+          >
             {section === 'Commitments' && (
               <>
                 <p className="eyebrow">WHAT WAS PROMISED</p>
@@ -258,7 +352,7 @@ function PrivateDetail({ id }: { id: string }) {
                         {c.milestones.map((m) => (
                           <div key={m.id}>
                             <p>
-                              {m.title} � {m.status.toLowerCase()}
+                              {m.title} · {m.status.toLowerCase()}
                             </p>
                             {c.promised_by === me.data?.id &&
                               m.status === 'PENDING' &&
@@ -285,6 +379,10 @@ function PrivateDetail({ id }: { id: string }) {
                 </div>
                 <h2>Payment follows authorization.</h2>
                 <p>{p.payment_condition}</p>
+                <FinancialRecords
+                  key={`${p.version}-${p.transaction.state}-${p.transaction.refunded_minor}`}
+                  pactId={id}
+                />
                 <div className="notice">
                   <LockKeyhole size={19} />
                   <p>
@@ -306,18 +404,30 @@ function PrivateDetail({ id }: { id: string }) {
                       disabled={!!busy}
                       onClick={() => payment('order')}
                     >
-                      Create Sandbox checkout
+                      {checkoutUnavailable
+                        ? 'Check existing checkout again'
+                        : 'Create Sandbox checkout'}
                     </button>
                     <button
                       className="button secondary"
-                      disabled={!!busy}
+                      disabled={!!busy || checkoutUnavailable}
                       onClick={() => payment('capture')}
                     >
                       Capture approved Sandbox payment
                     </button>
                   </div>
                 ) : (
-                  <p className="muted">Only the Pact�s payer can initiate or capture checkout.</p>
+                  <p className="muted">
+                    {!['CREATED', 'AUTHORIZED', 'CAPTURED'].includes(p.transaction.state) ||
+                    p.status !== 'ACTIVE'
+                      ? p.transaction.confirmation_pending
+                        ? 'Payment was submitted. Use Refresh record to verify the PayPal result without charging again.'
+                        : p.status === 'DISPUTED' &&
+                            ['CREATED', 'AUTHORIZED'].includes(p.transaction.state)
+                          ? 'Resolution requested. Payment is not confirmed; review the next steps in Resolution.'
+                          : 'Payment actions are closed. View confirmed results in Financial records.'
+                      : 'Only the Pact’s payer can initiate or capture checkout.'}
+                  </p>
                 )}
                 {operation && (
                   <div className="notice">
@@ -340,18 +450,8 @@ function PrivateDetail({ id }: { id: string }) {
                   </div>
                 )}
                 {p.status === 'ACTIVE' && (
-                  <button
-                    className="button secondary"
-                    disabled={!!busy}
-                    onClick={() =>
-                      action(
-                        'transition',
-                        { status: 'DISPUTED', expectedVersion: p.version },
-                        'Pact marked as needing resolution. Payment state is unchanged.',
-                      )
-                    }
-                  >
-                    Mark as needing resolution
+                  <button className="button secondary" onClick={() => setSection('Resolution')}>
+                    Review resolution options
                   </button>
                 )}
               </>
@@ -373,7 +473,7 @@ function PrivateDetail({ id }: { id: string }) {
                         {e.versions.map((v) => (
                           <div key={v.id}>
                             <p className="mono">
-                              Version {v.version} � {v.state.toLowerCase()} � {v.mime_type}
+                              Version {v.version} · {v.state.toLowerCase()} · {v.mime_type}
                             </p>
                             {v.state === 'FAILED' && (
                               <p>
@@ -445,7 +545,7 @@ function PrivateDetail({ id }: { id: string }) {
                       </label>
                     </fieldset>
                     <button className="button secondary" disabled={!!busy}>
-                      {busy === 'upload' ? 'Storing evidence�' : 'Store private evidence'}
+                      {busy === 'upload' ? 'Storing evidence…' : 'Store private evidence'}
                     </button>
                   </form>
                 ) : (
@@ -471,6 +571,12 @@ function PrivateDetail({ id }: { id: string }) {
                     explicitly request another assessment.
                   </p>
                 )}
+                {assessment.success && p.analyses[0]?.state !== 'READY' && (
+                  <p className="notice">
+                    Showing the earlier completed assessment while the latest request is unavailable
+                    or processing.
+                  </p>
+                )}
                 {assessment.success ? (
                   <>
                     <p className="badge">
@@ -478,22 +584,47 @@ function PrivateDetail({ id }: { id: string }) {
                     </p>
                     <p>{assessment.data.reasoningSummary}</p>
                     <p className="mono">
-                      Confidence estimate: {Math.round(assessment.data.confidence * 100)}%
+                      Confidence in this assessment: {Math.round(assessment.data.confidence * 100)}%
                     </p>
-                    <p className="field-help">
-                      A bounded model estimate, not a guarantee or a measured probability. Missing
-                      evidence remains explicit.
+                    <p className="muted">
+                      This is model confidence, not the percentage of work completed.
                     </p>
                     {assessment.data.commitments.map((c) => (
-                      <article className="assessment-empty" key={c.commitmentId}>
+                      <article className={styles.card} key={c.commitmentId}>
                         <h3>{p.commitments.find((v) => v.id === c.commitmentId)?.title}</h3>
-                        <p>Claim: {c.claim}</p>
-                        <p>Inference: {c.inference}</p>
-                        <p>Uncertainty: {c.uncertainty}</p>
+                        {c.deliverableMatch !== undefined && (
+                          <p>
+                            <strong>Deliverable match estimate: {c.deliverableMatch}%</strong>
+                            <br />
+                            Advisory fit to the requested deliverable, not a measured completion
+                            percentage. Review the cited support below.
+                          </p>
+                        )}
+                        {c.claim && (
+                          <p>
+                            <strong>Observed evidence</strong>
+                            <br />
+                            {c.claim}
+                          </p>
+                        )}
+                        <p>
+                          <strong>Assessment</strong>
+                          <br />
+                          {c.inference}
+                        </p>
+                        {c.uncertainty && (
+                          <p>
+                            <strong>Limitations</strong>
+                            <br />
+                            {c.uncertainty}
+                          </p>
+                        )}
                         <p>Appears: {c.status.toLowerCase().replaceAll('_', ' ')}</p>
                         {c.evidenceIds.map((vid) => (
                           <button key={vid} className="text-link" onClick={() => download(vid)}>
-                            Review cited evidence version {vid.slice(0, 8)}
+                            Review{' '}
+                            {p.evidence.find((e) => e.versions.some((v) => v.id === vid))?.title ??
+                              'supporting document'}
                           </button>
                         ))}
                       </article>
@@ -510,6 +641,14 @@ function PrivateDetail({ id }: { id: string }) {
                         No additional gaps reported by the model. Review this judgment critically.
                       </p>
                     )}
+                    {assessment.data.status === 'UNCLEAR' &&
+                      !assessment.data.missingEvidence.length && (
+                        <p>
+                          Review the stated uncertainty together and clarify the acceptance
+                          criteria. An unclear agreement criterion does not mean the uploaded
+                          artifact is missing.
+                        </p>
+                      )}
                     <p>
                       Advisory recommendation:{' '}
                       {assessment.data.recommendation.type.toLowerCase().replaceAll('_', ' ')}
@@ -554,14 +693,89 @@ function PrivateDetail({ id }: { id: string }) {
               <>
                 <p className="eyebrow">A FAIR OUTCOME</p>
                 <h2>Both sides get a voice.</h2>
-                {current ? (
+                <p>
+                  A resolution request records a concern for both parties. It does not open a PayPal
+                  dispute, reverse a payment, or let AI decide the outcome. Evidence and assessment
+                  remain available.
+                </p>
+                {p.status === 'DISPUTED' && (
+                  <div className="notice">
+                    <div>
+                      <h3>Why resolution was requested</h3>
+                      {resolutionRequest && (
+                        <p className="field-help">
+                          Recorded by {resolutionRequest.actorName ?? 'a Pact member'} on{' '}
+                          {new Date(resolutionRequest.created_at).toLocaleString()}. A member
+                          requested review; this is not an automatic AI judgment or a PayPal
+                          dispute.
+                        </p>
+                      )}
+                      <p>
+                        {p.audit.find(
+                          (a) =>
+                            [
+                              'PACT_DISPUTED',
+                              'PACT_RESOLUTION_CONCERN',
+                              'HUMAN_REVIEW_REQUESTED',
+                            ].includes(a.event_type) && a.reason,
+                        )?.reason ??
+                          'The earlier request did not record a reason. Either party can explain the concern below.'}
+                      </p>
+                      <p>
+                        Review the evidence together. Either party can propose keeping the payment
+                        or a refund by mutual agreement. If agreement fails, request human help
+                        below; a reviewer can decide after hearing both sides. A rejection keeps the
+                        discussion open; a revised proposal needs fresh decisions.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {['ACTIVE', 'DISPUTED'].includes(p.status) && (
+                  <form
+                    className="draft-form"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      const form = event.currentTarget;
+                      const reason = new FormData(form).get('reason');
+                      const result = await action(
+                        'transition',
+                        { status: 'DISPUTED', expectedVersion: p.version, reason },
+                        'Concern shared with both parties. Review or propose an outcome below.',
+                      );
+                      if (result) form.reset();
+                    }}
+                  >
+                    <label>
+                      {p.status === 'DISPUTED'
+                        ? 'Add context for both parties'
+                        : 'What needs resolution?'}
+                      <textarea
+                        name="reason"
+                        required
+                        minLength={10}
+                        maxLength={2000}
+                        placeholder="Explain the concern and the outcome you would like."
+                      />
+                    </label>
+                    <button className="button secondary" disabled={!!busy}>
+                      {p.status === 'DISPUTED' ? 'Share resolution concern' : 'Request resolution'}
+                    </button>
+                  </form>
+                )}
+                <p>
+                  <a className="button secondary" href="#human-review">
+                    Ask a human to review this concern or refund
+                  </a>
+                </p>
+                {current && !current.proposal.staffDecisionId && !reviewOpen ? (
                   <>
                     <p className="mono">Resolution version {current.version}</p>
                     <h3>Proposed consequence: {consequence}</h3>
                     <p>{current.proposal.reason}</p>
                     <p>
                       Exactly this version and financial amount are recorded in each decision. Both
-                      parties must agree; AI cannot approve.
+                      parties must agree to a mutual proposal. A human-review decision follows the
+                      separate reviewer process; AI cannot approve.
                     </p>
                     <div className="positions">
                       {p.parties.map((r) => (
@@ -654,8 +868,13 @@ function PrivateDetail({ id }: { id: string }) {
                   <div className="notice">
                     <LockKeyhole size={20} />
                     <p>
-                      No current proposal. A verified captured payment is required before proposing
-                      its resolution.
+                      {reviewOpen
+                        ? 'A human review is open. Continue the conversation below; mutual proposals are paused.'
+                        : current?.proposal.staffDecisionId
+                          ? 'A reviewer decision is recorded. Check the human-review record and financial confirmation below.'
+                          : p.transaction.state === 'CAPTURED'
+                            ? 'Either party can propose an outcome below. Both parties must approve the same proposal before it can take effect.'
+                            : 'Payment confirmation is pending. Use Refresh record to check PayPal without charging again. Once the capture is confirmed, either party can propose keeping the payment or a refund.'}
                     </p>
                   </div>
                 )}
@@ -665,7 +884,9 @@ function PrivateDetail({ id }: { id: string }) {
                     current proposal.
                   </p>
                 )}
-                {p.transaction.state === 'CAPTURED' &&
+                {!reviewOpen &&
+                  !current?.proposal.staffDecisionId &&
+                  p.transaction.state === 'CAPTURED' &&
                   ['ACTIVE', 'DISPUTED'].includes(p.status) && (
                     <form className="draft-form" onSubmit={propose}>
                       <fieldset>
@@ -728,7 +949,7 @@ function PrivateDetail({ id }: { id: string }) {
               <li key={a.id}>
                 <span className="timeline-dot done" />
                 <div>
-                  <strong>{a.event_type.replaceAll('_', ' ').toLowerCase()}</strong>
+                  <strong>{a.label ?? a.event_type.replaceAll('_', ' ').toLowerCase()}</strong>
                   <p>{new Date(a.created_at).toLocaleString()}</p>
                 </div>
               </li>
@@ -743,6 +964,13 @@ function PrivateDetail({ id }: { id: string }) {
           </div>
         </aside>
       </div>
+      <HumanReview
+        pactId={id}
+        paymentState={p.transaction.state}
+        payer={p.parties.find((x) => x.user_id === me.data?.id)?.role === p.transaction.payer_role}
+        closed={!['ACTIVE', 'DISPUTED'].includes(p.status)}
+      />
+      <PactReview pactId={id} />
     </>
   );
 }
