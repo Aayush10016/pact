@@ -15,6 +15,9 @@ const names = [
   'PAYPAL_CLIENT_SECRET',
   'PAYPAL_CLIENT_ID',
   'PAYPAL_WEBHOOK_ID',
+  'POSTGRES_PASSWORD',
+  'APP_DATABASE_PASSWORD',
+  'MINIO_SECRET_ACCESS_KEY',
   'DATABASE_URL',
   'MIGRATION_DATABASE_URL',
   'S3_SECRET_ACCESS_KEY',
@@ -27,19 +30,7 @@ for (const file of files) {
   const content = readFileSync(file, 'utf8');
   for (const name of names) {
     const value = process.env[name];
-    const disposableExample =
-      file === '.env.example' &&
-      ['DATABASE_URL', 'MIGRATION_DATABASE_URL'].includes(name) &&
-      /^postgresql:\/\/(?:pact:pact_local_only|pact_runtime:pact_runtime_local_only)@localhost:55432\/pact$/.test(
-        value ?? '',
-      );
-    if (
-      !disposableExample &&
-      value &&
-      value.length > 12 &&
-      !value.includes('change_me') &&
-      content.includes(value)
-    )
+    if (value && value.length > 12 && content.includes(value))
       matches.push({ file, variable: name });
   }
 }

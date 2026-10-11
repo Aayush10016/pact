@@ -13,7 +13,9 @@ export function Logo({ inverse = false }: { inverse?: boolean }) {
           className={styles.source}
         />
       </span>
-      <span>Pact</span>
+      <span>
+        pact<span className="logo-period">.</span>
+      </span>
     </span>
   );
 }

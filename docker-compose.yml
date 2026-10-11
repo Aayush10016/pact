@@ -4,7 +4,7 @@ services:
     image: postgres:17.7-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pact}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pact_local_only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run node scripts/setup-local-env.mjs first}
       POSTGRES_DB: ${POSTGRES_DB:-pact}
     ports: ['127.0.0.1:${POSTGRES_PORT:-55432}:5432']
     volumes: ['postgres_data:/var/lib/postgresql/data']
@@ -29,8 +29,8 @@ services:
       dockerfile: infrastructure/docker/node.Dockerfile
     command: ['node', 'scripts/bootstrap-local.mjs']
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:-pact_local_only}@postgres:5432/${POSTGRES_DB:-pact}
-      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:-pact_runtime_local_only}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:?Run node scripts/setup-local-env.mjs first}@postgres:5432/${POSTGRES_DB:-pact}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Run node scripts/setup-local-env.mjs first}
     depends_on:
       postgres: { condition: service_healthy }
     restart: 'no'
@@ -43,15 +43,15 @@ services:
       NODE_ENV: development
       API_PORT: 4000
       WEB_ORIGIN: http://localhost:${WEB_PORT:-3000}
-      DATABASE_URL: postgresql://pact_runtime:${APP_DATABASE_PASSWORD:-pact_runtime_local_only}@postgres:5432/${POSTGRES_DB:-pact}
+      DATABASE_URL: postgresql://pact_runtime:${APP_DATABASE_PASSWORD:?Run node scripts/setup-local-env.mjs first}@postgres:5432/${POSTGRES_DB:-pact}
       REDIS_URL: redis://redis:6379
       WORKERS_ENABLED: 'true'
       EVIDENCE_STORAGE: ${EVIDENCE_STORAGE:-minio}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: http://localhost:9000
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-pact-evidence}
-      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY_ID:-pact_local_minio}
-      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:-pact_minio_local_only_change_me}
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY_ID:?Run node scripts/setup-local-env.mjs first}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:?Run node scripts/setup-local-env.mjs first}
       CLAMAV_HOST: clamav
       CLAMAV_PORT: 3310
       AI_SERVICE_URL: http://ai:8000
@@ -132,8 +132,8 @@ services:
       context: .
       dockerfile: infrastructure/docker/minio.Dockerfile
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_ID:-pact_local_minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_ACCESS_KEY:-pact_minio_local_only_change_me}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_ID:?Run node scripts/setup-local-env.mjs first}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_ACCESS_KEY:?Run node scripts/setup-local-env.mjs first}
       MINIO_BROWSER: 'off'
     ports: ['127.0.0.1:9000:9000']
     volumes: ['minio_data:/data']

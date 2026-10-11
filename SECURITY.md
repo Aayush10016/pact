@@ -68,3 +68,7 @@ owner's private GitHub channel. No dedicated security email has been provisioned
 ## Human review extension
 
 The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).
+
+## Local credential rotation (2026-10-11)
+
+Local PostgreSQL owner/runtime and MinIO passwords are generated privately in the ignored `.env`. Compose requires these variables without password defaults; `.env.example` leaves them blank. `scripts/setup-local-env.mjs` generates only missing values and preserves existing provider configuration. It does not rotate an existing database: initialized PostgreSQL roles must be changed explicitly, and dependent services restarted with the matching values. Docker build contexts exclude `.env` and private recovery files. Historical local password defaults were revoked in the running database/storage; old logins were checked and rejected. History is retained, and the old alert can be marked revoked after verification. No provider keys were rotated or published.

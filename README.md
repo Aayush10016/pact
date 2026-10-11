@@ -12,7 +12,7 @@ remain separate gates. See
 ## Run locally
 
 Node 24.18.0, pnpm 11.20.0, Python 3.11+, and Docker Desktop are required.
-Preserve an existing `.env`; copy `.env.example` only when no local environment exists.
+Run `node scripts/setup-local-env.mjs` to fill missing local credentials with random values. Existing values and provider credentials are preserved. Existing database volumes require password rotation in PostgreSQL itself; changing `.env` alone does not change an initialized database.
 
 ```powershell
 pnpm install --frozen-lockfile

@@ -9,14 +9,16 @@ const {
   PutBucketVersioningCommand,
 } = require('@aws-sdk/client-s3');
 if (existsSync('.env')) process.loadEnvFile('.env');
+if (!process.env.MINIO_ACCESS_KEY_ID || !process.env.MINIO_SECRET_ACCESS_KEY)
+  throw new Error('Private MinIO credentials are required; run local environment setup.');
 const bucket = process.env.MINIO_BUCKET_NAME || 'pact-evidence';
 const client = new S3Client({
   region: 'us-east-1',
   endpoint: process.env.MINIO_ENDPOINT || 'http://localhost:9000',
   forcePathStyle: true,
   credentials: {
-    accessKeyId: process.env.MINIO_ACCESS_KEY_ID || 'pact_local_minio',
-    secretAccessKey: process.env.MINIO_SECRET_ACCESS_KEY || 'pact_minio_local_only_change_me',
+    accessKeyId: process.env.MINIO_ACCESS_KEY_ID,
+    secretAccessKey: process.env.MINIO_SECRET_ACCESS_KEY,
   },
 });
 try {

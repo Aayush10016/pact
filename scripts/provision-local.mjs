@@ -13,7 +13,8 @@ if (
   throw new Error(
     'Local provisioning only supports the explicitly named Pact development databases.',
   );
-const password = process.env.APP_DATABASE_PASSWORD || 'pact_runtime_local_only';
+const password = process.env.APP_DATABASE_PASSWORD;
+if (!password) throw new Error('APP_DATABASE_PASSWORD is required; run local environment setup.');
 const db = new pg.Client({ connectionString: value });
 await db.connect();
 try {
