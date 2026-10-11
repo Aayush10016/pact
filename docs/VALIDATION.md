@@ -136,3 +136,9 @@ as calibrated. Until then this is a draft integration implementation, not a comp
 Operator reconciliation, production financial review, notification delivery, malware scanning,
 image OCR, calibrated evidence evaluations, retention controls, backup/restore drills,
 monitoring integration and deployment hardening. These do not replace the missing Phase 2 gates.
+
+## Human review and reputation (2026-10-11)
+
+Production lint/types/build and encoding checks passed. Unit/UI tests: 54 passed. Isolated PostgreSQL/Redis integration tests: 31 passed, including staff authorization, self-adjudication denial, private conversation scoping, request deduplication, stale versions, evidence-snapshot binding, no-response deadline, single refund execution, official readback, and verified-review eligibility/moderation. Python: Ruff passed and 27 tests passed. Desktop/mobile browser suite: 48 passed. The new ribbon logo was visually inspected on sign-in. A separate screenshot helper hit a browser screenshot protocol error while other browser checks were running; the complete primary browser suite and its screenshots passed.
+
+Existing Test 3 remains captured with its 85% advisory match assessment intact. The selected local reviewer was resolved from a verified stored Clerk identity and configured privately; no real adjudication/refund of an existing user Pact was performed. Financial-provider doubles are confined to tests. The selected reviewer is a participant in Test 3, so another staff identity is required to adjudicate that particular Pact. The computer-use browser integration could not initialize on this host; live signed-in staff/member UI was checked through component/HTTP integration tests, not by claiming an inspected private browser session.

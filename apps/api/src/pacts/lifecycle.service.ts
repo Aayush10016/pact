@@ -197,6 +197,13 @@ export class LifecycleService {
           [id],
         )
       ).rows;
+      const supportCase =
+        (
+          await db.query(
+            'SELECT id,status FROM support_cases WHERE pact_id=$1 ORDER BY created_at DESC LIMIT 1',
+            [id],
+          )
+        ).rows[0] ?? null;
       const history = await this.activity(user, id, db);
       return {
         ...p,
@@ -207,6 +214,7 @@ export class LifecycleService {
         analyses,
         resolutions,
         audit: history,
+        supportCase,
       };
     });
   }
@@ -327,8 +335,8 @@ export class LifecycleService {
     const rows = (
       await query(
         `SELECT a.id,a.pact_id,a.event_type,a.created_at,p.title,
-          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN') THEN a.metadata->>'reason' END reason,
-          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN') THEN actor.display_name END actor_name,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN','HUMAN_REVIEW_REQUESTED','HUMAN_REVIEW_DECIDED') THEN a.metadata->>'reason' END reason,
+          CASE WHEN a.event_type IN ('PACT_DISPUTED','PACT_RESOLUTION_CONCERN','HUMAN_REVIEW_REQUESTED','HUMAN_REVIEW_DECIDED') THEN actor.display_name END actor_name,
           COALESCE(op.operation,CASE WHEN res.proposal->>'type' IN ('FULL_REFUND','PARTIAL_REFUND') THEN 'REFUND' END) operation,
           a.metadata->>'decision' decision,
           COALESCE(a.metadata->>'providerEventType',we.event_type) provider_event,

@@ -136,6 +136,7 @@ export interface PactRecord {
       failure_code: string | null;
     }>;
   }>;
+  supportCase?: { id: string; status: string } | null;
   analyses: Array<{
     id: string;
     state: string;
@@ -148,6 +149,7 @@ export interface PactRecord {
     version: number;
     proposal: {
       type: string;
+      staffDecisionId?: string;
       percentage?: number;
       reason: string;
       amountMinor: string;

@@ -64,3 +64,7 @@ The AI container receives no PayPal secrets; the API receives the configured pri
 
 Do not put credentials or private evidence in a public issue. Report through the repository
 owner's private GitHub channel. No dedicated security email has been provisioned yet.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).

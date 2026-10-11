@@ -1,4 +1,5 @@
 'use client';
+import { ReviewDeskLink } from './human-review';
 import { AccountControl } from './session';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -16,6 +17,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Logo />
           </Link>
           <nav aria-label="Workspace">
+            {!preview && <Link href="/workspace/sellers">Seller reviews</Link>}
+            {!preview && <ReviewDeskLink />}
             <Link href={prefix} aria-current={path === '/workspace' ? 'page' : undefined}>
               Your pacts
             </Link>

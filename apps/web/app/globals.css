@@ -2023,3 +2023,22 @@ em {
     animation: none !important;
   }
 }
+
+@media (max-width: 760px) {
+  .app-header-inner {
+    flex-wrap: wrap;
+    padding-block: 12px;
+  }
+  .app-header nav {
+    order: 4;
+    width: 100%;
+    margin-left: 0;
+    gap: 20px;
+    overflow-x: auto;
+  }
+  .app-header nav a {
+    min-height: 40px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}

@@ -1,3 +1,4 @@
+import { staffAuthorization } from './refund-authority';
 import {
   Injectable,
   Inject,
@@ -119,7 +120,7 @@ export class ReconciliationService {
       if (tx.state === 'COMPLETED') return null;
       return (
         await db.query(
-          "SELECT op.*,tx.version AS transaction_version FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id JOIN parties payer ON payer.pact_id=tx.pact_id AND payer.user_id=op.actor_id AND (op.operation='REFUND' OR payer.role=tx.payer_role) WHERE tx.pact_id=$1 AND ((op.operation='CAPTURE' AND tx.state IN ('CREATED','AUTHORIZED')) OR (op.operation='REFUND' AND tx.state='CAPTURED')) AND op.status IN ('PROVIDER_ACCEPTED','NEEDS_RECONCILIATION') AND op.paypal_id IS NOT NULL",
+          "SELECT op.*,tx.version AS transaction_version FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id LEFT JOIN parties payer ON payer.pact_id=tx.pact_id AND payer.user_id=op.actor_id WHERE tx.pact_id=$1 AND (op.operation='REFUND' OR payer.role=tx.payer_role) AND ((op.operation='CAPTURE' AND tx.state IN ('CREATED','AUTHORIZED')) OR (op.operation='REFUND' AND tx.state='CAPTURED')) AND op.status IN ('PROVIDER_ACCEPTED','NEEDS_RECONCILIATION') AND op.paypal_id IS NOT NULL",
           [pactId],
         )
       ).rows[0];
@@ -284,6 +285,7 @@ export class ReconciliationService {
         ).rows[0];
         const members = (await db.query('SELECT user_id FROM parties WHERE pact_id=$1', [p.id]))
           .rows;
+        const staff = await staffAuthorization(db, r, op.actor_id);
         const approvals = (
           await db.query('SELECT * FROM approvals WHERE resolution_id=$1', [op.resolution_id])
         ).rows;
@@ -291,16 +293,18 @@ export class ReconciliationService {
           !r ||
           r.proposal.amountMinor !== op.amount_minor ||
           members.length !== 2 ||
-          approvals.length !== 2 ||
-          !members.every((m) =>
-            approvals.some(
-              (a) =>
-                a.user_id === m.user_id &&
-                a.decision === 'APPROVED' &&
-                a.resolution_version === r.version &&
-                a.proposal_sha256 === r.proposal.proposalSha256,
-            ),
-          ) ||
+          (!!r.proposal.staffDecisionId && !staff) ||
+          (!staff &&
+            (approvals.length !== 2 ||
+              !members.every((m) =>
+                approvals.some(
+                  (a) =>
+                    a.user_id === m.user_id &&
+                    a.decision === 'APPROVED' &&
+                    a.resolution_version === r.version &&
+                    a.proposal_sha256 === r.proposal.proposalSha256,
+                ),
+              ))) ||
           tx.state !== 'CAPTURED' ||
           BigInt(tx.refunded_minor) + BigInt(op.amount_minor) > BigInt(tx.amount_minor)
         )

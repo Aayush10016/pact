@@ -1,12 +1,19 @@
+import Image from 'next/image';
+import styles from './logo.module.css';
 export function Logo({ inverse = false }: { inverse?: boolean }) {
   return (
     <span className={`logo ${inverse ? 'inverse' : ''}`}>
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
-        <path d="M4 8h9v16H4zM19 8h9v16h-9zM11 14h10v4H11z" />
-      </svg>
-      <span>
-        pact<span className="logo-period">.</span>
+      <span className={styles.mark} aria-hidden="true">
+        <Image
+          src="/pact-ribbon.png"
+          alt=""
+          width={94}
+          height={94}
+          unoptimized
+          className={styles.source}
+        />
       </span>
+      <span>Pact</span>
     </span>
   );
 }

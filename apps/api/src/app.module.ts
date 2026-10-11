@@ -1,3 +1,5 @@
+import { ReputationModule } from './support/reputation.module';
+import { SupportModule } from './support/support.module';
 import { CapabilitiesModule } from './capabilities.module';
 import { JobsModule } from './jobs/jobs.module';
 import { EvidenceModule } from './evidence/evidence.module';
@@ -11,6 +13,8 @@ import { ReconciliationModule } from './payments/reconciliation';
 @Module({
   imports: [
     DatabaseModule,
+    SupportModule,
+    ReputationModule,
     CapabilitiesModule,
     JobsModule,
     EvidenceModule,

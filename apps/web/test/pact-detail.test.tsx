@@ -5,6 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { PactDetail } from '../components/pact-detail';
 import { SessionProvider } from '../components/session';
 import { DraftForm } from '../components/draft-form';
+vi.mock('../components/human-review', () => ({ HumanReview: () => null }));
+vi.mock('../components/seller-reviews', () => ({ PactReview: () => null }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 const token = vi.hoisted(() => async () => 'test-only-token');
 vi.mock('@clerk/nextjs', () => ({

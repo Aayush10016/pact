@@ -1,5 +1,7 @@
 'use client';
 import Link from 'next/link';
+import { HumanReview } from './human-review';
+import { PactReview } from './seller-reviews';
 import styles from './record-panels.module.css';
 import { useEffect, useState, useRef } from 'react';
 import { ArrowLeft, Clock3, FileText, LockKeyhole } from 'lucide-react';
@@ -235,8 +237,9 @@ function PrivateDetail({ id }: { id: string }) {
   const party = p.parties.find((r) => r.user_id === me.data?.id);
   const isPayer = party?.role === p.transaction.payer_role;
   const resolutionRequest = p.audit.find((a) =>
-    ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN'].includes(a.event_type),
+    ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN', 'HUMAN_REVIEW_REQUESTED'].includes(a.event_type),
   );
+  const reviewOpen = !!p.supportCase && ['OPEN', 'IN_REVIEW'].includes(p.supportCase.status);
   const approval = current?.approvals.find((a) => a.user_id === me.data?.id);
   const approved =
     current?.approvals.length === 2 && current.approvals.every((a) => a.decision === 'APPROVED');
@@ -710,16 +713,19 @@ function PrivateDetail({ id }: { id: string }) {
                       <p>
                         {p.audit.find(
                           (a) =>
-                            ['PACT_DISPUTED', 'PACT_RESOLUTION_CONCERN'].includes(a.event_type) &&
-                            a.reason,
+                            [
+                              'PACT_DISPUTED',
+                              'PACT_RESOLUTION_CONCERN',
+                              'HUMAN_REVIEW_REQUESTED',
+                            ].includes(a.event_type) && a.reason,
                         )?.reason ??
                           'The earlier request did not record a reason. Either party can explain the concern below.'}
                       </p>
                       <p>
                         Review the evidence together. Either party can propose keeping the payment
-                        or a refund. Both must approve the same outcome before it can be confirmed.
-                        A rejection keeps the discussion open; a revised proposal needs fresh
-                        decisions.
+                        or a refund by mutual agreement. If agreement fails, request human help
+                        below; a reviewer can decide after hearing both sides. A rejection keeps the
+                        discussion open; a revised proposal needs fresh decisions.
                       </p>
                     </div>
                   </div>
@@ -756,14 +762,20 @@ function PrivateDetail({ id }: { id: string }) {
                     </button>
                   </form>
                 )}
-                {current ? (
+                <p>
+                  <a className="button secondary" href="#human-review">
+                    Ask a human to review this concern or refund
+                  </a>
+                </p>
+                {current && !current.proposal.staffDecisionId && !reviewOpen ? (
                   <>
                     <p className="mono">Resolution version {current.version}</p>
                     <h3>Proposed consequence: {consequence}</h3>
                     <p>{current.proposal.reason}</p>
                     <p>
                       Exactly this version and financial amount are recorded in each decision. Both
-                      parties must agree; AI cannot approve.
+                      parties must agree to a mutual proposal. A human-review decision follows the
+                      separate reviewer process; AI cannot approve.
                     </p>
                     <div className="positions">
                       {p.parties.map((r) => (
@@ -856,9 +868,13 @@ function PrivateDetail({ id }: { id: string }) {
                   <div className="notice">
                     <LockKeyhole size={20} />
                     <p>
-                      {p.transaction.state === 'CAPTURED'
-                        ? 'Either party can propose an outcome below. Both parties must approve the same proposal before it can take effect.'
-                        : 'Payment confirmation is pending. Use Refresh record to check PayPal without charging again. Once the capture is confirmed, either party can propose keeping the payment or a refund.'}
+                      {reviewOpen
+                        ? 'A human review is open. Continue the conversation below; mutual proposals are paused.'
+                        : current?.proposal.staffDecisionId
+                          ? 'A reviewer decision is recorded. Check the human-review record and financial confirmation below.'
+                          : p.transaction.state === 'CAPTURED'
+                            ? 'Either party can propose an outcome below. Both parties must approve the same proposal before it can take effect.'
+                            : 'Payment confirmation is pending. Use Refresh record to check PayPal without charging again. Once the capture is confirmed, either party can propose keeping the payment or a refund.'}
                     </p>
                   </div>
                 )}
@@ -868,7 +884,9 @@ function PrivateDetail({ id }: { id: string }) {
                     current proposal.
                   </p>
                 )}
-                {p.transaction.state === 'CAPTURED' &&
+                {!reviewOpen &&
+                  !current?.proposal.staffDecisionId &&
+                  p.transaction.state === 'CAPTURED' &&
                   ['ACTIVE', 'DISPUTED'].includes(p.status) && (
                     <form className="draft-form" onSubmit={propose}>
                       <fieldset>
@@ -946,6 +964,13 @@ function PrivateDetail({ id }: { id: string }) {
           </div>
         </aside>
       </div>
+      <HumanReview
+        pactId={id}
+        paymentState={p.transaction.state}
+        payer={p.parties.find((x) => x.user_id === me.data?.id)?.role === p.transaction.payer_role}
+        closed={!['ACTIVE', 'DISPUTED'].includes(p.status)}
+      />
+      <PactReview pactId={id} />
     </>
   );
 }

@@ -83,7 +83,7 @@ export class EvidenceService {
         if (duplicate.rowCount)
           throw new ConflictException('Upload already completed. Refresh the evidence timeline.');
         const active = await db.query(
-          "SELECT 1 FROM paypal_transactions t JOIN transactions tx ON tx.id=t.transaction_id WHERE tx.pact_id=$1 AND t.status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION') AND t.resolution_id IS NOT NULL",
+          "SELECT 1 FROM paypal_transactions t JOIN transactions tx ON tx.id=t.transaction_id WHERE tx.pact_id=$1 AND (t.status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION') OR (t.status='QUEUED' AND EXISTS(SELECT 1 FROM resolutions sr WHERE sr.id=t.resolution_id AND sr.proposal ? 'staffDecisionId'))) AND t.resolution_id IS NOT NULL",
           [pactId],
         );
         if (active.rowCount)

@@ -93,14 +93,39 @@ export function useApi() {
       headers.set('authorization', `Bearer ${token}`);
       if (options.body && !(options.body instanceof FormData))
         headers.set('content-type', 'application/json');
-      const response = await fetch(`/api/pact/${path}`, { ...options, headers, cache: 'no-store' });
-      const result = await response.json();
+      let response: Response;
+      let result: unknown;
+      try {
+        response = await fetch(`/api/pact/${path}`, {
+          ...options,
+          headers,
+          cache: 'no-store',
+          signal: options.signal ?? AbortSignal.timeout(50000),
+        });
+        result = await response.json();
+      } catch {
+        throw new ApiError(
+          'Connection interrupted: Pact could not confirm the server response. Your request may already be saved. Refresh the record before retrying; do not start another payment.',
+          'OUTCOME_UNKNOWN',
+        );
+      }
+      const envelope = result as {
+        data?: unknown;
+        error?: { message?: unknown; reason?: unknown };
+      };
       if (!response.ok)
         throw new ApiError(
-          result.error?.message ?? 'This action could not be completed. Try again.',
-          result.error?.reason,
+          typeof envelope?.error?.message === 'string'
+            ? envelope.error.message
+            : 'This action could not be completed. Refresh before retrying.',
+          typeof envelope?.error?.reason === 'string' ? envelope.error.reason : undefined,
         );
-      return result.data as T;
+      if (!envelope || typeof envelope !== 'object' || !('data' in envelope))
+        throw new ApiError(
+          'The server response could not be read. Refresh the record before retrying.',
+          'OUTCOME_UNKNOWN',
+        );
+      return envelope.data as T;
     },
     [getToken],
   );

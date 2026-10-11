@@ -32,8 +32,28 @@ export class ResolutionService {
     const data = parse(proposalSchema, input);
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue in the case conversation.');
       if (!['ACTIVE', 'DISPUTED'].includes(p.status))
         throw new ConflictException('Pact is not open for resolution.');
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM resolutions WHERE pact_id=$1 AND retired_at IS NULL AND proposal ? 'staffDecisionId'",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException(
+          'A reviewer decision is already recorded. Follow its confirmation status.',
+        );
       const current = await db.query(
         'SELECT version FROM resolutions WHERE pact_id=$1 ORDER BY version DESC LIMIT 1',
         [id],
@@ -127,6 +147,15 @@ export class ResolutionService {
     const data = parse(approvalInputSchema, input);
     return this.db.transaction(async (db) => {
       await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue the case conversation.');
       const r = (
         await db.query(
           'SELECT * FROM resolutions WHERE id=$1 AND pact_id=$2 AND retired_at IS NULL',
@@ -134,6 +163,10 @@ export class ResolutionService {
         )
       ).rows[0];
       if (!r) throw new NotFoundException('Current resolution not found.');
+      if (r.proposal.staffDecisionId)
+        throw new ForbiddenException(
+          'This outcome was decided by a reviewer. Follow the human-review record.',
+        );
       if (r.version !== data.version || r.proposal.proposalSha256 !== data.proposalSha256)
         throw new ConflictException('Review the current financial consequence before deciding.');
       const prior = (
@@ -164,6 +197,15 @@ export class ResolutionService {
     parse(idSchema, rid);
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue in the case conversation.');
       if (!['ACTIVE', 'DISPUTED'].includes(p.status))
         throw new ConflictException('Pact is not open for execution.');
       const r = (
@@ -173,6 +215,8 @@ export class ResolutionService {
         )
       ).rows[0];
       if (!r) throw new NotFoundException('Current resolution not found.');
+      if (r.proposal.staffDecisionId)
+        throw new ForbiddenException('Only the assigned reviewer can submit this outcome.');
       const parties = (await db.query('SELECT user_id FROM parties WHERE pact_id=$1', [id])).rows;
       const approvals = (await db.query('SELECT * FROM approvals WHERE resolution_id=$1', [rid]))
         .rows;

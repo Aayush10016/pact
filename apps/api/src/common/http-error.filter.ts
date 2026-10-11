@@ -28,7 +28,7 @@ export class HttpErrorFilter implements ExceptionFilter {
           message: provider
             ? exception.userMessage
             : status >= 500
-              ? 'This service is not available yet.'
+              ? 'The server could not complete this request. Refresh the record to check its status before retrying. No payment or refund is confirmed by this error.'
               : exception instanceof HttpException
                 ? exception.message
                 : 'Request failed.',

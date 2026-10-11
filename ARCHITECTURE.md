@@ -99,3 +99,7 @@ R2 for private evidence. No Kubernetes. Internal AI routes require service ident
 restriction before deployment. Add pgvector only after retrieval demonstrates a need.
 Structured backend startup logs use Nest's JSON logger. Sentry remains an unimplemented monitoring integration;
 the empty environment placeholder does not imply active telemetry.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).

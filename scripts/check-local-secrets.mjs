@@ -27,7 +27,19 @@ for (const file of files) {
   const content = readFileSync(file, 'utf8');
   for (const name of names) {
     const value = process.env[name];
-    if (value && value.length > 12 && !value.includes('change_me') && content.includes(value))
+    const disposableExample =
+      file === '.env.example' &&
+      ['DATABASE_URL', 'MIGRATION_DATABASE_URL'].includes(name) &&
+      /^postgresql:\/\/(?:pact:pact_local_only|pact_runtime:pact_runtime_local_only)@localhost:55432\/pact$/.test(
+        value ?? '',
+      );
+    if (
+      !disposableExample &&
+      value &&
+      value.length > 12 &&
+      !value.includes('change_me') &&
+      content.includes(value)
+    )
       matches.push({ file, variable: name });
   }
 }

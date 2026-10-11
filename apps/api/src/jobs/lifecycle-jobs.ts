@@ -1,3 +1,4 @@
+import { staffAuthorization } from '../payments/refund-authority';
 import { Injectable, Inject, ConflictException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
@@ -213,7 +214,8 @@ export class LifecycleJobs {
       ).rows[0];
       const members = (await db.query('SELECT user_id,role FROM parties WHERE pact_id=$1', [p.id]))
         .rows;
-      if (!members.some((m) => m.user_id === op.actor_id)) throw new ForbiddenException();
+      if (op.operation !== 'REFUND' && !members.some((m) => m.user_id === op.actor_id))
+        throw new ForbiddenException();
       if (op.operation === 'REFUND') {
         const r = (
           await db.query(
@@ -221,6 +223,7 @@ export class LifecycleJobs {
             [op.resolution_id, p.id],
           )
         ).rows[0];
+        const staff = await staffAuthorization(db, r, op.actor_id);
         const approvals = (
           await db.query('SELECT * FROM approvals WHERE resolution_id=$1', [op.resolution_id])
         ).rows;
@@ -229,16 +232,18 @@ export class LifecycleJobs {
           tx.state !== 'CAPTURED' ||
           !tx.capture_id ||
           members.length !== 2 ||
-          approvals.length !== 2 ||
-          !members.every((m) =>
-            approvals.some(
-              (a) =>
-                a.user_id === m.user_id &&
-                a.decision === 'APPROVED' &&
-                a.resolution_version === r.version &&
-                a.proposal_sha256 === r.proposal.proposalSha256,
-            ),
-          ) ||
+          (!!r.proposal.staffDecisionId && !staff) ||
+          (!staff &&
+            (approvals.length !== 2 ||
+              !members.every((m) =>
+                approvals.some(
+                  (a) =>
+                    a.user_id === m.user_id &&
+                    a.decision === 'APPROVED' &&
+                    a.resolution_version === r.version &&
+                    a.proposal_sha256 === r.proposal.proposalSha256,
+                ),
+              ))) ||
           r.proposal.amountMinor !== op.amount_minor
         )
           throw new ForbiddenException('Financial consent is invalid');
