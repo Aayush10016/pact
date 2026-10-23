@@ -87,3 +87,5 @@ Python: `apps/ai/.venv/Scripts/python -m ruff check apps/ai` and
 ## Invite-only hosted Sandbox
 
 See [Sandbox deployment and acceptance gates](docs/SANDBOX_DEPLOYMENT.md). The overlay uses separate volumes, HTTPS, private service ports and Sandbox-only payments. Run `pnpm sandbox:webhooks` to reconnect the restricted callback relay for local testing; hosted testing uses its own stable HTTPS callback.
+
+For the user-selected split hosting route, see [Render / Supabase / Vercel preparation](docs/RENDER_SUPABASE_VERCEL.md), including unresolved free scanner hosting and actual cloud acceptance gates.

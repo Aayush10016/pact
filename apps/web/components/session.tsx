@@ -3,6 +3,7 @@ import { createContext, useContext, useCallback, useEffect, useState, useRef } f
 import Link from 'next/link';
 import { useAuth, UserButton } from '@clerk/nextjs';
 import { WorkspaceIntroduction } from './workspace-introduction';
+import { apiTarget } from '../lib/api-target';
 type Session = {
   status: 'loading' | 'authenticated' | 'signed-out' | 'unavailable';
   getToken: () => Promise<string | null>;
@@ -96,12 +97,19 @@ export function useApi() {
       let response: Response;
       let result: unknown;
       try {
-        response = await fetch(`/api/pact/${path}`, {
-          ...options,
-          headers,
-          cache: 'no-store',
-          signal: options.signal ?? AbortSignal.timeout(50000),
-        });
+        response = await fetch(
+          apiTarget(
+            path,
+            options.method?.toUpperCase() === 'POST' && options.body instanceof FormData,
+            process.env.NEXT_PUBLIC_PACT_UPLOAD_ORIGIN,
+          ),
+          {
+            ...options,
+            headers,
+            cache: 'no-store',
+            signal: options.signal ?? AbortSignal.timeout(50000),
+          },
+        );
         result = await response.json();
       } catch {
         throw new ApiError(
