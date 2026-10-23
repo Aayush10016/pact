@@ -22,7 +22,7 @@ Versions and JavaScript/Python lockfiles are committed. Fonts are packaged local
 
 ## Architecture and engineering
 
-The pnpm monorepo separates `apps/web`, `apps/api`, `apps/ai`, and shared types/domain/config packages. The intended boundary is web → authenticated API → internal AI. PostgreSQL owns authoritative records; Redis/BullMQ runs jobs. Private R2 evidence storage is reserved for Phase 2.
+The pnpm monorepo separates `apps/web`, `apps/api`, `apps/ai`, and shared types/domain/config packages. The intended boundary is web â†’ authenticated API â†’ internal AI. PostgreSQL owns authoritative records; Redis/BullMQ runs jobs. Private R2 evidence storage is reserved for Phase 2.
 
 - Frontend: branded landing, sample workspace, search/status filters, activity, validated session-only draft, and Pact commitment/evidence/assessment/resolution views. Responsive layouts, keyboard focus, skip navigation, field labels, and empty/loading/error states are included.
 - Backend: modular NestJS REST, health and real database/Redis readiness, typed sample resources, strict draft validation, safe error handling, JSON logs, scoped CORS, Helmet, and shutdown hooks. Financial requests are rejected even with a forged bearer token.
@@ -77,7 +77,7 @@ No outstanding user decisions are required for Phase 1.
 
 Local container validation used host ports 13000 (web), 14000 (API), and 18000 (AI), leaving native previews on their normal ports. All five long-running containers are healthy; the migration exited with code 0. The final local browser rerun passed both timed-out tests without changing assertions or adding retries to CI.
 
-# Phase 2 / validation record — 2026-10-06
+# Phase 2 / validation record â€” 2026-10-06
 
 Status: implemented and locally validated; live provider lifecycle proof is outstanding.
 The approved Phase 1 main branch remains unchanged. Work is on `codex/phase2-lifecycle`.
@@ -136,3 +136,39 @@ as calibrated. Until then this is a draft integration implementation, not a comp
 Operator reconciliation, production financial review, notification delivery, malware scanning,
 image OCR, calibrated evidence evaluations, retention controls, backup/restore drills,
 monitoring integration and deployment hardening. These do not replace the missing Phase 2 gates.
+
+## Human review and reputation (2026-10-11)
+
+Production lint/types/build and encoding checks passed. Unit/UI tests: 54 passed. Isolated PostgreSQL/Redis integration tests: 31 passed, including staff authorization, self-adjudication denial, private conversation scoping, request deduplication, stale versions, evidence-snapshot binding, no-response deadline, single refund execution, official readback, and verified-review eligibility/moderation. Python: Ruff passed and 27 tests passed. Desktop/mobile browser suite: 48 passed. The new ribbon logo was visually inspected on sign-in. A separate screenshot helper hit a browser screenshot protocol error while other browser checks were running; the complete primary browser suite and its screenshots passed.
+
+Existing Test 3 remains captured with its 85% advisory match assessment intact. The selected local reviewer was resolved from a verified stored Clerk identity and configured privately; no real adjudication/refund of an existing user Pact was performed. Financial-provider doubles are confined to tests. The selected reviewer is a participant in Test 3, so another staff identity is required to adjudicate that particular Pact. The computer-use browser integration could not initialize on this host; live signed-in staff/member UI was checked through component/HTTP integration tests, not by claiming an inspected private browser session.
+
+## Local password alert remediation (2026-10-11)
+
+PostgreSQL owner/runtime passwords were rotated in the existing cluster, with new connections succeeding and both previous passwords rejected. MinIO was restarted against its preserved volume with a new private password; the new credentials can read the existing bucket and the previous password is rejected. Setup was checked in an isolated temporary directory: random credentials generated, a second run preserved settings, and Compose rejected missing required passwords. No database/storage volumes were removed. Existing Test 3 payment state and advisory match were checked unchanged. Lint, encoding, format and configured-secret scanning passed; 54 unit/UI and 31 isolated database/Redis integration tests passed. The original lowercase `pact.` wordmark remains with the uploaded ribbon mark.
+
+## AI endpoint repair (2026-10-23)
+
+The configured Nemotron 3 Super endpoint began returning HTTP 404 from NVIDIA despite its catalogue entry. The existing key successfully serves Nemotron 3.5 Lightning; the local model configuration was updated privately. Assessment decoding now requires the full commitment array with its exact application IDs and count, while server-side citation, confidence and ownership checks remain intact. Instructions-only content must not receive an unsupported numeric score. No silent provider/model fallback or AI financial authority was introduced.
+
+The live evaluation was tightened so supported/conflicting cases require actual citations and an appropriate conclusion; blanket UNCLEAR output cannot pass those cases. An explicitly rejected adversarial output is recorded as a safety outcome, not a successful generated assessment or a provider availability pass. Final real evaluation: extraction, supported, insufficient, conflicting and injection cases all returned valid passing results. The rebuilt Docker AI service returned HTTP 200 for the existing private Test 3 resume snapshot, with a cited 85% match. This direct service check did not create a new stored analysis, change the agreement, or initiate a financial operation.
+
+Ruff and 28 Python tests passed. Updated certifi, pypdf and Pillow pins passed pip-audit with no known vulnerabilities. Existing Test 3 payment and stored assessment remained intact. JavaScript package/image hardening and webhook repair are separate pending steps; the user clarified that the target remains local Sandbox.
+
+## Hosted Sandbox preparation (2026-10-23)
+
+Target clarified: zero-budget, invite-only Sandbox that must run with the development PC off. No hosting account, paid resource, DNS record or public deployment was created. A separate Compose overlay prepares HTTPS routing, private dependency ports, persistent volumes and bounded log rotation; verified tester emails are checked after Clerk verification and fail closed if malformed. Setup preserves local integration settings and writes generated infrastructure credentials only to an ignored private environment file.
+
+Final checks: `pnpm check` passed with 61 unit/UI tests; isolated PostgreSQL/Redis integration tests: 31 passed; Ruff and 28 Python tests passed. Desktop/mobile browser suite: 48 passed, zero failures, skips or flaky results. Final JavaScript dependency audit reports zero vulnerabilities at every severity after Next/Vite/Vitest updates; the Python audit also passed. API/web Docker builds and local health checks passed. The merged Sandbox configuration check passed without logging expanded secrets.
+
+The pinned Caddy configuration validated. Twelve real gateway checks passed, including private API/AI denial, unsigned/wrong-method/oversized webhook rejection, signed file bytes, and rejection of anonymous/expired downloads, uploads and administrative paths. Synthetic objects and the temporary gateway were removed. Local backup/restore matched exact fingerprints/counts for all 27 public tables using a fresh restore database; original data was preserved. Existing Test 3 agreement/payment/85-percent assessment stayed unchanged.
+
+The foreground local webhook helper registered/read back its temporary restricted Sandbox callback and passed negative public-route checks. This is not signed financial-event acceptance or independent hosting. No new payment, refund, adjudication or stored AI assessment was initiated. Native Arm runtime validation, real hosted DNS/TLS/firewall, independent reviewer access, signed webhook delivery, host backup scheduling/restore and complete signed-in two-user acceptance remain deployment gates. The existing reviewer participates in Test 3 and cannot adjudicate it.
+
+## Render / Supabase / Vercel preparation (2026-10-23)
+
+Added an explicitly Free Render API definition and Vercel monorepo configuration. The backend accepts authenticated TLS Redis URLs and platform PORT fallback while retaining explicit API_PORT precedence. Evidence multipart POSTs can use a configured HTTPS API origin directly, preserving the 8 MB upload allowance without routing through Vercel's 4.5 MB function limit. Normal and financial requests keep the existing proxy. Invalid upload origins fail before transmission; the same backend authorization, quarantine and scan path applies. No financial decision logic, applied migration, credential or local data was changed.
+
+Final `pnpm check` passed: encoding, lint, types, 65 unit/UI tests and production API/web builds. Format and configured-secret scans passed. Render configuration matched its official JSON Schema. The selected Vercel configuration fields validated against its published schema, but the vendor schema itself emitted a meta-validation warning in an unrelated trigger definition; this is not a successful strict meta-schema validation of the entire upstream document. Cloud dashboard validation is still required.
+
+The browser reached Render sign-in; no deployment was created and no key was sent to a hosting provider. The local Docker engine was unavailable during this preparation, so integration/container/browser suites were not rerun against these changes; earlier results are recorded above and are not substituted for cloud acceptance. Live cross-origin preflight, real 8 MB upload, Supabase role/TLS/Data API isolation, cloud queue/AI/scanner/storage and signed PayPal Sandbox delivery remain unverified. Free scanner memory and secure connectivity remain unresolved. The deployment guide explicitly distinguishes these gates from a complete running application.

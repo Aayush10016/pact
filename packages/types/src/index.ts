@@ -74,3 +74,4 @@ export const draftSchema = z
 export type PactDraft = z.infer<typeof draftSchema>;
 
 export * from './lifecycle';
+export * from './financial-records';

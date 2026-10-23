@@ -2,6 +2,7 @@ import { requestContext } from '../common/request-context';
 import {
   Global,
   Injectable,
+  Logger,
   Module,
   NotFoundException,
   ServiceUnavailableException,
@@ -10,12 +11,21 @@ import {
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 @Injectable()
 export class Database implements OnModuleDestroy {
+  private readonly logger = new Logger('PactDatabase');
   private runtimeChecked = false;
   readonly pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     connectionTimeoutMillis: 3000,
     max: 10,
   });
+  constructor() {
+    // pg removes interrupted idle clients. Handle the event without logging the client,
+    // connection parameters or raw errors, and allow the next request to reconnect.
+    this.pool.on('error', () => {
+      this.runtimeChecked = false;
+      this.logger.error('Database idle connection interrupted; reconnecting on next request.');
+    });
+  }
   async ensureRuntimeRole() {
     if (this.runtimeChecked) return;
     const role = await this.query(
@@ -33,16 +43,22 @@ export class Database implements OnModuleDestroy {
   }
   async transaction<T>(fn: (db: PoolClient) => Promise<T>): Promise<T> {
     const db = await this.pool.connect();
+    let released = false;
     try {
       await db.query('BEGIN');
       const result = await fn(db);
       await db.query('COMMIT');
       return result;
     } catch (e) {
-      await db.query('ROLLBACK');
+      try {
+        await db.query('ROLLBACK');
+      } catch {
+        db.release(true);
+        released = true;
+      }
       throw e;
     } finally {
-      db.release();
+      if (!released) db.release();
     }
   }
   async onModuleDestroy() {
@@ -83,6 +99,12 @@ export async function enqueue(db: PoolClient, kind: string, resourceId: string, 
   await db.query(
     'INSERT INTO outbox_jobs(kind,resource_id,dedupe_key) VALUES($1,$2,$3) ON CONFLICT(dedupe_key) DO NOTHING',
     [kind, resourceId, key],
+  );
+}
+export async function notify(db: PoolClient, pactId: string, type: string) {
+  await db.query(
+    'INSERT INTO notifications(user_id,pact_id,type) SELECT user_id,$1,$2 FROM parties WHERE pact_id=$1 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=parties.user_id AND n.pact_id=$1 AND n.type=$2 AND n.read_at IS NULL)',
+    [pactId, type],
   );
 }
 @Global()

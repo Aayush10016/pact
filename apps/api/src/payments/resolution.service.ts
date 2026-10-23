@@ -12,7 +12,12 @@ import { Database, member, audit, enqueue } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
 import { evidenceSnapshot } from '../assessments/assessments.module';
-import { PayPalProvider } from './paypal.provider';
+import {
+  CheckoutUnavailableError,
+  PayPalProvider,
+  ProviderError,
+  validateCaptureOrder,
+} from './paypal.provider';
 export function proposalHash(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -27,8 +32,28 @@ export class ResolutionService {
     const data = parse(proposalSchema, input);
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue in the case conversation.');
       if (!['ACTIVE', 'DISPUTED'].includes(p.status))
         throw new ConflictException('Pact is not open for resolution.');
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM resolutions WHERE pact_id=$1 AND retired_at IS NULL AND proposal ? 'staffDecisionId'",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException(
+          'A reviewer decision is already recorded. Follow its confirmation status.',
+        );
       const current = await db.query(
         'SELECT version FROM resolutions WHERE pact_id=$1 ORDER BY version DESC LIMIT 1',
         [id],
@@ -122,6 +147,15 @@ export class ResolutionService {
     const data = parse(approvalInputSchema, input);
     return this.db.transaction(async (db) => {
       await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue the case conversation.');
       const r = (
         await db.query(
           'SELECT * FROM resolutions WHERE id=$1 AND pact_id=$2 AND retired_at IS NULL',
@@ -129,6 +163,10 @@ export class ResolutionService {
         )
       ).rows[0];
       if (!r) throw new NotFoundException('Current resolution not found.');
+      if (r.proposal.staffDecisionId)
+        throw new ForbiddenException(
+          'This outcome was decided by a reviewer. Follow the human-review record.',
+        );
       if (r.version !== data.version || r.proposal.proposalSha256 !== data.proposalSha256)
         throw new ConflictException('Review the current financial consequence before deciding.');
       const prior = (
@@ -159,6 +197,15 @@ export class ResolutionService {
     parse(idSchema, rid);
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
+      if (
+        (
+          await db.query(
+            "SELECT 1 FROM support_cases WHERE pact_id=$1 AND status IN ('OPEN','IN_REVIEW')",
+            [id],
+          )
+        ).rowCount
+      )
+        throw new ConflictException('Human review is open. Continue in the case conversation.');
       if (!['ACTIVE', 'DISPUTED'].includes(p.status))
         throw new ConflictException('Pact is not open for execution.');
       const r = (
@@ -168,6 +215,8 @@ export class ResolutionService {
         )
       ).rows[0];
       if (!r) throw new NotFoundException('Current resolution not found.');
+      if (r.proposal.staffDecisionId)
+        throw new ForbiddenException('Only the assigned reviewer can submit this outcome.');
       const parties = (await db.query('SELECT user_id FROM parties WHERE pact_id=$1', [id])).rows;
       const approvals = (await db.query('SELECT * FROM approvals WHERE resolution_id=$1', [rid]))
         .rows;
@@ -224,18 +273,48 @@ export class ResolutionService {
     parse(idSchema, id);
     if (!this.paypal.enabled())
       throw new ServiceUnavailableException('PayPal Sandbox is not configured.');
-    if (operation === 'CAPTURE') {
-      const orderId = await this.db.transaction(async (db) => {
+    {
+      const preflight = await this.db.transaction(async (db) => {
         const p = await member(db, id, user.id);
         const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [id])).rows[0];
         if (p.role !== tx.payer_role)
           throw new ForbiddenException('Only the payer can authorize this payment.');
+        const prior = (
+          await db.query(
+            'SELECT id,status,response FROM paypal_transactions WHERE transaction_id=$1 AND operation=$2',
+            [tx.id, operation],
+          )
+        ).rows[0];
+        if (prior && (operation === 'CAPTURE' || !tx.order_id)) return { prior };
+        if (operation === 'ORDER' && !tx.order_id) return {};
+        if (p.status !== 'ACTIVE' || !['CREATED', 'AUTHORIZED'].includes(tx.state))
+          throw new ConflictException('Payment is not open for capture.');
         if (!tx.order_id) throw new ConflictException('Create and approve the PayPal order first.');
-        return tx.order_id as string;
+        return { orderId: tx.order_id as string, tx };
       });
-      const order = await this.paypal.getOrder(orderId);
-      if (!['APPROVED', 'COMPLETED'].includes(order.status))
-        throw new ConflictException('Approve the order at PayPal before requesting capture.');
+      if (preflight.prior) return preflight.prior;
+      let order;
+      if (preflight.orderId) {
+        try {
+          order = await this.paypal.getOrder(preflight.orderId!);
+        } catch (error) {
+          if (error instanceof ProviderError)
+            await this.db.transaction(async (db) => {
+              await member(db, id, user.id);
+              await audit(db, id, user.id, 'PAYMENT_PREFLIGHT_FAILED', {
+                operation,
+                orderId: preflight.orderId,
+                ...error.diagnostic,
+              });
+            });
+          if (error instanceof ProviderError && !error.uncertain && error.diagnostic.http === 404)
+            throw new CheckoutUnavailableError(false, error.diagnostic);
+          throw error;
+        }
+        validateCaptureOrder(order, preflight.tx!);
+        if (operation === 'CAPTURE' && !['APPROVED', 'COMPLETED'].includes(order.status))
+          throw new ConflictException('Approve the order at PayPal before requesting capture.');
+      }
     }
     return this.db.transaction(async (db) => {
       const p = await member(db, id, user.id, true);
@@ -247,8 +326,6 @@ export class ResolutionService {
         throw new ForbiddenException('Only the payer can authorize this payment.');
       if (!['USD', 'EUR', 'GBP'].includes(tx.currency))
         throw new ConflictException('This currency is not enabled in the sandbox adapter.');
-      if (!['CREATED', 'AUTHORIZED'].includes(tx.state))
-        throw new ConflictException('Payment has already been started or completed.');
       if (operation === 'CAPTURE' && !tx.order_id)
         throw new ConflictException('Create and approve the PayPal order first.');
       const prior = (
@@ -258,6 +335,8 @@ export class ResolutionService {
         )
       ).rows[0];
       if (prior) return prior;
+      if (!['CREATED', 'AUTHORIZED'].includes(tx.state))
+        throw new ConflictException('Payment has already been started or completed.');
       const result = await db.query(
         "INSERT INTO paypal_transactions(transaction_id,request_id,operation,status,actor_id,amount_minor) VALUES($1,$2,$3,'QUEUED',$4,$5) RETURNING id,status",
         [tx.id, randomUUID(), operation, user.id, tx.amount_minor],

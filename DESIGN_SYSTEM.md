@@ -82,3 +82,7 @@ Figma has editable desktop/mobile landing layouts, desktop workspace, Pact detai
 semantic colors and shared type styles. Implementation follows this visual system while adding
 responsive content density and accessible browser behavior. Browser screenshots and test
 results are the implementation QA evidence, not proof of a full production release.
+
+## Updated logo
+
+The user-supplied green ribbon P replaces the joining mark. The original supplied raster is preserved as pact-ribbon.png; compact placements use a CSS viewport around the mark alongside the Pact wordmark. The favicon uses the same artwork. This user-approved asset supersedes the older Figma logo exploration.

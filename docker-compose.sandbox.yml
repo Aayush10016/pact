@@ -1,0 +1,63 @@
+# Hosted, invite-only Sandbox. Use with docker-compose.yml; separate project/volumes.
+name: pact-sandbox
+x-logging: &sandbox-logging
+  driver: json-file
+  options: { max-size: '10m', max-file: '3' }
+services:
+  postgres:
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  migrate:
+    logging: *sandbox-logging
+  api:
+    environment:
+      NODE_ENV: production
+      PACT_TESTER_EMAILS: ${PACT_TESTER_EMAILS:?Set the invited verified tester emails}
+      WEB_ORIGIN: https://${PACT_HOST:?Set the Sandbox application hostname}
+      MINIO_PUBLIC_ENDPOINT: https://${PACT_FILES_HOST:?Set the private download hostname}
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  web:
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  ai:
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  minio:
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  clamav:
+    # Official Debian variant supports native Arm64 and AMD64.
+    image: clamav/clamav:1.5.4-debian13-slim@sha256:d7ede3cefeaf3b8a72ebcdee849d13f504bbca3f3b3cfade5bc7b6ee06a4f62c
+    ports: !reset []
+    restart: unless-stopped
+    logging: *sandbox-logging
+  gateway:
+    image: caddy:2-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    environment:
+      PACT_HOST: ${PACT_HOST:?Set the Sandbox application hostname}
+      PACT_FILES_HOST: ${PACT_FILES_HOST:?Set the private download hostname}
+      EVIDENCE_BUCKET: ${MINIO_BUCKET_NAME:-pact-evidence}
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./infrastructure/sandbox/Caddyfile:/etc/caddy/Caddyfile:ro
+      - sandbox_tls:/data
+      - sandbox_gateway_config:/config
+    restart: unless-stopped
+    logging: *sandbox-logging
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_healthy }
+      minio: { condition: service_healthy }
+volumes:
+  sandbox_tls:
+  sandbox_gateway_config:

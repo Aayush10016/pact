@@ -491,17 +491,6 @@ em {
   border-top: 1px solid var(--line);
   padding-top: 22px;
 }
-.workflow-number {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--brand);
-  margin-bottom: 30px;
-}
-.workflow-number .mono {
-  color: var(--muted);
-  font-size: 10px;
-}
 .workflow-grid h3 {
   font-family: var(--font-display);
   font-size: 26px;
@@ -1822,9 +1811,6 @@ em {
     grid-template-columns: 1fr;
     gap: 30px;
   }
-  .workflow-number {
-    margin-bottom: 15px;
-  }
   .workflow-grid h3 {
     font-size: 26px;
   }
@@ -2035,5 +2021,24 @@ em {
   *::after {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-header-inner {
+    flex-wrap: wrap;
+    padding-block: 12px;
+  }
+  .app-header nav {
+    order: 4;
+    width: 100%;
+    margin-left: 0;
+    gap: 20px;
+    overflow-x: auto;
+  }
+  .app-header nav a {
+    min-height: 40px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 }

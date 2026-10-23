@@ -13,3 +13,5 @@ node_modules
 **/.ruff_cache
 playwright-report
 test-results
+*.log
+.recovery-local

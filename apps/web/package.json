@@ -3,28 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1",
+    "dev": "next dev --hostname localhost",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1",
+    "start": "next start --hostname localhost",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "16.3.8",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "@pact/types": "workspace:*",
-    "@pact/shared": "workspace:*",
+    "@clerk/nextjs": "7.9.10",
     "@fontsource-variable/manrope": "5.3.0",
     "@fontsource-variable/source-serif-4": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.2.7",
-    "lucide-react": "0.468.0",
-    "tailwindcss": "4.3.3",
+    "@pact/shared": "workspace:*",
+    "@pact/types": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
-    "zod": "4.1.13",
-    "@clerk/nextjs": "7.9.10"
+    "lucide-react": "0.468.0",
+    "next": "16.4.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
+    "zod": "4.1.13"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.0",
     "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3"
+    "@types/react-dom": "19.2.3",
+    "jsdom": "27.4.0"
   }
 }

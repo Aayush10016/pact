@@ -75,11 +75,16 @@ export const groundedAssessmentSchema = assessmentSchema.safeExtend({
       z
         .object({
           commitmentId: idSchema,
+          deliverableMatch: z.number().int().min(0).max(100).optional(),
           status: z.enum(['FULFILLED', 'PARTIALLY_FULFILLED', 'UNFULFILLED', 'UNCLEAR']),
           evidenceIds: z.array(idSchema).max(50),
           claim: z.string().max(1000),
           inference: z.string().max(1000),
           uncertainty: z.string().max(1000),
+          citations: z
+            .array(z.object({ evidenceId: idSchema, quote: z.string().min(1).max(1000) }).strict())
+            .max(50)
+            .default([]),
         })
         .strict(),
     )
@@ -131,6 +136,7 @@ export interface PactRecord {
       failure_code: string | null;
     }>;
   }>;
+  supportCase?: { id: string; status: string } | null;
   analyses: Array<{
     id: string;
     state: string;
@@ -143,6 +149,7 @@ export interface PactRecord {
     version: number;
     proposal: {
       type: string;
+      staffDecisionId?: string;
       percentage?: number;
       reason: string;
       amountMinor: string;
@@ -153,5 +160,12 @@ export interface PactRecord {
     approvals: Array<{ user_id: string; decision: string }>;
     execution?: { status: string } | null;
   }>;
-  audit: Array<{ id: string; event_type: string; created_at: string }>;
+  audit: Array<{
+    id: string;
+    event_type: string;
+    created_at: string;
+    label?: string;
+    reason?: string;
+    actorName?: string;
+  }>;
 }

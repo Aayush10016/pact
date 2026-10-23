@@ -17,6 +17,7 @@ import { AuthModule, AuthenticationGuard, type AuthRequest } from '../auth/auth.
 import { Database, enqueue } from '../database/database.module';
 import { ResolutionService } from './resolution.service';
 import { PayPalProvider } from './paypal.provider';
+import { ReceiptsService } from './receipts.service';
 export class DisabledPayPalAdapter {
   async executeAuthorizedAction(): Promise<never> {
     throw new Error('Unscoped financial execution is disabled.');
@@ -25,7 +26,21 @@ export class DisabledPayPalAdapter {
 @Controller('v1/pacts/:id')
 @UseGuards(AuthenticationGuard)
 class PaymentsController {
-  constructor(@Inject(ResolutionService) private readonly service: ResolutionService) {}
+  constructor(
+    @Inject(ResolutionService) private readonly service: ResolutionService,
+    @Inject(ReceiptsService) private readonly receipts: ReceiptsService,
+  ) {}
+  @Get('receipts') async receiptList(@Param('id') id: string, @Req() req: AuthRequest) {
+    return { data: await this.receipts.list(id, req.identity) };
+  }
+  @Get('receipts/:kind/:receiptId') async receipt(
+    @Param('id') id: string,
+    @Param('kind') kind: string,
+    @Param('receiptId') receiptId: string,
+    @Req() req: AuthRequest,
+  ) {
+    return { data: await this.receipts.read(id, kind, receiptId, req.identity) };
+  }
   @Post('resolutions') async propose(
     @Param('id') id: string,
     @Req() req: AuthRequest,
@@ -127,9 +142,10 @@ class WebhookController {
       if (receipt.rowCount && allowed.has(event.event_type))
         await enqueue(db, 'WEBHOOK', receipt.rows[0].id, `webhook-${receipt.rows[0].id}`);
       else if (receipt.rowCount)
-        await db.query('UPDATE paypal_webhook_events SET processed_at=now() WHERE id=$1', [
-          receipt.rows[0].id,
-        ]);
+        await db.query(
+          "UPDATE paypal_webhook_events SET processed_at=now(),processing_status='IGNORED' WHERE id=$1",
+          [receipt.rows[0].id],
+        );
     });
     return { received: true };
   }
@@ -137,7 +153,7 @@ class WebhookController {
 @Module({
   imports: [AuthModule],
   controllers: [PaymentsController, LegacyPaymentsController, WebhookController],
-  providers: [PayPalProvider, ResolutionService],
+  providers: [PayPalProvider, ResolutionService, ReceiptsService],
   exports: [PayPalProvider, ResolutionService],
 })
 export class PaymentsModule {}

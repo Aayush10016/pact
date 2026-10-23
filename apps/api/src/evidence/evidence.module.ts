@@ -19,7 +19,8 @@ import { randomUUID } from 'node:crypto';
 import { unlink } from 'node:fs/promises';
 import { AuthenticationGuard, AuthModule, type AuthRequest } from '../auth/auth.module';
 import { EvidenceService } from './evidence.service';
-import { R2Storage } from './storage';
+import { EvidenceStorage, R2Storage, MinioStorageAdapter } from './storage';
+import { EvidenceScanner } from './scanner';
 const upload = FileInterceptor('file', {
   storage: diskStorage({
     destination: tmpdir(),
@@ -79,7 +80,21 @@ class EvidenceController {
 @Module({
   imports: [AuthModule],
   controllers: [EvidenceController],
-  providers: [R2Storage, EvidenceService],
-  exports: [R2Storage, EvidenceService],
+  providers: [
+    R2Storage,
+    MinioStorageAdapter,
+    EvidenceScanner,
+    {
+      provide: EvidenceStorage,
+      inject: [R2Storage, MinioStorageAdapter],
+      useFactory: (r2: R2Storage, minio: MinioStorageAdapter) => {
+        const driver = process.env.EVIDENCE_STORAGE || 'minio';
+        if (!['r2', 'minio'].includes(driver)) throw new Error('Invalid evidence storage driver');
+        return driver === 'r2' ? r2 : minio;
+      },
+    },
+    EvidenceService,
+  ],
+  exports: [EvidenceStorage, EvidenceScanner, EvidenceService],
 })
 export class EvidenceModule {}

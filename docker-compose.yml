@@ -4,7 +4,7 @@ services:
     image: postgres:17.7-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pact}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pact_local_only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run node scripts/setup-local-env.mjs first}
       POSTGRES_DB: ${POSTGRES_DB:-pact}
     ports: ['127.0.0.1:${POSTGRES_PORT:-55432}:5432']
     volumes: ['postgres_data:/var/lib/postgresql/data']
@@ -29,8 +29,8 @@ services:
       dockerfile: infrastructure/docker/node.Dockerfile
     command: ['node', 'scripts/bootstrap-local.mjs']
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:-pact_local_only}@postgres:5432/${POSTGRES_DB:-pact}
-      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:-pact_runtime_local_only}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pact}:${POSTGRES_PASSWORD:?Run node scripts/setup-local-env.mjs first}@postgres:5432/${POSTGRES_DB:-pact}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Run node scripts/setup-local-env.mjs first}
     depends_on:
       postgres: { condition: service_healthy }
     restart: 'no'
@@ -43,19 +43,29 @@ services:
       NODE_ENV: development
       API_PORT: 4000
       WEB_ORIGIN: http://localhost:${WEB_PORT:-3000}
-      DATABASE_URL: postgresql://pact_runtime:${APP_DATABASE_PASSWORD:-pact_runtime_local_only}@postgres:5432/${POSTGRES_DB:-pact}
+      DATABASE_URL: postgresql://pact_runtime:${APP_DATABASE_PASSWORD:?Run node scripts/setup-local-env.mjs first}@postgres:5432/${POSTGRES_DB:-pact}
       REDIS_URL: redis://redis:6379
       WORKERS_ENABLED: 'true'
+      EVIDENCE_STORAGE: ${EVIDENCE_STORAGE:-minio}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-pact-evidence}
+      MINIO_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY_ID:?Run node scripts/setup-local-env.mjs first}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_SECRET_ACCESS_KEY:?Run node scripts/setup-local-env.mjs first}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
       AI_SERVICE_URL: http://ai:8000
       AI_SERVICE_KEY: ${AI_SERVICE_KEY:-}
       CLERK_ISSUER: ${CLERK_ISSUER:-}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      PACT_OPERATOR_SUBJECTS: ${PACT_OPERATOR_SUBJECTS:-}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
       PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:-}
       PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:-}
+      PACT_REVIEWER_SUBJECTS: ${PACT_REVIEWER_SUBJECTS:-}
       PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID:-}
       PAYPAL_BASE_URL: https://api-m.sandbox.paypal.com
     ports: ['127.0.0.1:${API_HOST_PORT:-4000}:4000']
@@ -117,6 +127,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+  minio:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/minio.Dockerfile
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY_ID:?Run node scripts/setup-local-env.mjs first}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_ACCESS_KEY:?Run node scripts/setup-local-env.mjs first}
+      MINIO_BROWSER: 'off'
+    ports: ['127.0.0.1:9000:9000']
+    volumes: ['minio_data:/data']
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  clamav:
+    image: clamav/clamav:stable@sha256:ebec5bc138401b36ae987caa1a3fa3c3b2a21ed3d51f0bfa5852825e663e67b0
+    ports: ['127.0.0.1:3310:3310']
+    volumes: ['clamav_data:/var/lib/clamav']
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 15s
+      timeout: 10s
+      retries: 40
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
+  clamav_data:

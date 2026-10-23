@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import styles from './record-panels.module.css';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatMoney } from '@pact/shared';
@@ -59,11 +60,11 @@ function Invitation({ id }: { id: string }) {
         </div>
       </div>
       <div className="form-layout">
-        <div>
+        <div className={styles.invitation}>
           <h2>A shared definition of done.</h2>
           <p>{p.agreement}</p>
           {p.commitments.map((c) => (
-            <article className="assessment-empty" key={c.id}>
+            <article className={styles.card} key={c.id}>
               <h3>{c.title}</h3>
               <p>{c.description}</p>
               <p>Acceptance: {c.acceptance_criteria}</p>

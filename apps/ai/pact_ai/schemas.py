@@ -21,13 +21,53 @@ class Recommendation(StrictModel):
         return self
 
 
+class EvidenceCitation(StrictModel):
+    evidenceId: str = Field(min_length=1, max_length=100)
+    quote: str = Field(min_length=1, max_length=1000)
+
+
+class CommitmentExtractionRequest(StrictModel):
+    agreement: str = Field(min_length=20, max_length=20000)
+
+
+class ExtractedMilestone(StrictModel):
+    title: str = Field(min_length=3, max_length=120)
+    deadline: str | None = Field(default=None, max_length=100)
+    sourceQuote: str = Field(min_length=1, max_length=1000)
+
+
+class ExtractedCommitment(StrictModel):
+    title: str = Field(min_length=3, max_length=120)
+    description: str = Field(min_length=10, max_length=4000)
+    criteria: list[str] = Field(max_length=20)
+    deliverables: list[str] = Field(max_length=20)
+    deadline: str | None = Field(default=None, max_length=100)
+    milestones: list[ExtractedMilestone] = Field(max_length=20)
+    sourceQuote: str = Field(min_length=1, max_length=1000)
+
+
+class CommitmentExtraction(StrictModel):
+    commitments: list[ExtractedCommitment] = Field(min_length=1, max_length=20)
+    uncertainty: list[str] = Field(max_length=20)
+
+
 class CommitmentAssessment(StrictModel):
+    deliverableMatch: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Required advisory artifact-to-deliverable match estimate, separate from "
+        "contractual status. Give a number when cited content is assessable, even if status is "
+        "UNCLEAR; null only when no artifact content can be assessed. A backend resume with "
+        "backend skills and projects can match well despite an undefined acceptance rubric.",
+    )
     commitmentId: str
     status: Literal["FULFILLED", "PARTIALLY_FULFILLED", "UNFULFILLED", "UNCLEAR"]
     evidenceIds: list[str] = Field(max_length=50)
     claim: str = Field(max_length=1000)
     inference: str = Field(max_length=1000)
     uncertainty: str = Field(max_length=1000)
+    citations: list[EvidenceCitation] = Field(default_factory=list, max_length=50)
 
 
 class Assessment(StrictModel):
@@ -44,6 +84,7 @@ class Assessment(StrictModel):
 
 
 class EvidenceReference(StrictModel):
+    commitmentId: str | None = Field(default=None, max_length=100)
     id: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=10000)
 

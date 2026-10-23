@@ -1,3 +1,4 @@
+import { assertSandboxTester } from './sandbox-access';
 import { RequestLimiter } from './request-limiter';
 import { requestContext } from '../common/request-context';
 import {
@@ -108,6 +109,7 @@ export class AuthenticationGuard implements CanActivate {
     if (!auth?.startsWith('Bearer ') || auth.length > 8192 || auth.split('.').length !== 3)
       throw new ForbiddenException('A verified session is required.');
     const identity = await this.verifier.verify(auth.slice(7));
+    assertSandboxTester(identity.email);
     await this.db.ensureRuntimeRole();
     await this.limiter.consume(
       identity.subject,
@@ -129,6 +131,16 @@ class IdentityController {
   constructor(@Inject(Database) private readonly db: Database) {}
   @Get() async me(@Req() req: AuthRequest) {
     return { data: req.identity };
+  }
+  @Get('notifications') async notifications(@Req() req: AuthRequest) {
+    return {
+      data: (
+        await this.db.query(
+          'SELECT n.id,n.pact_id,n.type,n.created_at,n.read_at FROM notifications n JOIN parties p ON p.pact_id=n.pact_id AND p.user_id=n.user_id WHERE n.user_id=$1 ORDER BY n.created_at DESC LIMIT 50',
+          [req.identity.id],
+        )
+      ).rows,
+    };
   }
   @Get('invitations') async invitations(@Req() req: AuthRequest) {
     return {

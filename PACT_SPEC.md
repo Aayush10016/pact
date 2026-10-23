@@ -47,3 +47,7 @@ There is no auto-approval, AI financial authority, public evidence bucket or pro
 External credentials and the real happy/dispute lifecycle validation remain required release
 gates; implemented adapters and isolated provider-contract tests do not satisfy those gates.
 See docs/PHASE_2.md and docs/VALIDATION.md for actual behavior, configuration and limits.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).

@@ -38,7 +38,8 @@ result = {
             "commitmentId": "c1",
             "status": "UNCLEAR",
             "evidenceIds": ["e1"],
-            "claim": "Party claims completion",
+            "claim": "A party claims completion.",
+            "citations": [{"evidenceId": "e1", "quote": "A party claims completion."}],
             "inference": "Delivery is not established",
             "uncertainty": "Source files missing",
         }
@@ -53,15 +54,26 @@ def test_service_identity_is_required(monkeypatch):
     assert client.post("/v1/extract", content=b"evidence").status_code == 403
 
 
-def test_real_adapter_request_is_bounded_and_separates_policy_from_evidence(monkeypatch):
+@pytest.mark.parametrize(
+    "model", ["nvidia/nemotron-test-model", "nvidia/nemotron-3.5-lightning-30b-a3b"]
+)
+def test_real_adapter_request_is_bounded_and_separates_policy_from_evidence(monkeypatch, model):
     monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-only")
-    monkeypatch.setenv("NVIDIA_NIM_MODEL", "nvidia/nemotron-test-model")
+    monkeypatch.setenv("NVIDIA_NIM_MODEL", model)
 
     def handler(req):
         body = json.loads(req.content)
         assert body["messages"][0]["content"] == POLICY
         assert "untrustedContext" in body["messages"][1]["content"]
         assert body["max_tokens"] == 4096
+        if model == "nvidia/nemotron-3.5-lightning-30b-a3b":
+            assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        schema = body["response_format"]["json_schema"]["schema"]
+        assert "commitments" in schema["required"]
+        assert schema["properties"]["commitments"]["minItems"] == 1
+        assert schema["properties"]["commitments"]["maxItems"] == 1
+        commitment_schema = schema["$defs"]["CommitmentAssessment"]
+        assert commitment_schema["properties"]["commitmentId"]["enum"] == ["c1"]
         assert "tools" not in body
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result)}}]})
 

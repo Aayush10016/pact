@@ -20,7 +20,7 @@ beforeAll(async () => {
         return {
           subject: `test-${group}-${who}`,
           email: `${who}-${group}@example.test`,
-          name: `Test party ${who}`,
+          name: `José — आयुष ${who} 🧾?`,
         };
       },
     })
@@ -34,7 +34,7 @@ afterAll(async () => {
   await app?.close();
 });
 export const body = {
-  title: 'A real persistent agreement',
+  title: 'A real persistent agreement — “Café” → आयुष 🧾?',
   counterpartyEmail: `b-${group}@example.test`,
   agreement: 'Deliver the final identity files and guidelines with complete source assets.',
   money: { amountMinor: '2550', currency: 'USD' },
@@ -74,6 +74,15 @@ it('persists Pacts once, with integer money, distinct parties and separate payme
   ).toBe(409);
   const detail = (await (await request('a', `pacts/${pactId}`)).json()).data;
   expect(detail.transaction.amount_minor).toBe('2550');
+  expect(detail.title).toBe(body.title);
+  expect(detail.parties[0].display_name).toBe('José — आयुष a 🧾?');
+  const unicodeResponse = await request('a', `pacts/${pactId}`);
+  expect(unicodeResponse.headers.get('content-type')).toContain('application/json');
+  const unicodeJson = new TextDecoder('utf-8', { fatal: true }).decode(
+    await unicodeResponse.arrayBuffer(),
+  );
+  expect(JSON.parse(unicodeJson).data.title).toBe(body.title);
+  expect(unicodeJson).not.toContain('\uFFFD');
   expect(detail.status).toBe('CREATED');
   expect(detail.transaction.state).toBe('CREATED');
   expect(detail.commitments[0].milestones).toHaveLength(1);
@@ -116,6 +125,7 @@ it('rejects arbitrary transitions and stale Pact versions', async () => {
     (
       await request('b', `pacts/${pactId}/transition`, {
         status: 'DISPUTED',
+        reason: 'The parties need to review the delivered work together.',
         expectedVersion: detail.version + 10,
       })
     ).status,
@@ -124,8 +134,42 @@ it('rejects arbitrary transitions and stale Pact versions', async () => {
     (
       await request('b', `pacts/${pactId}/transition`, {
         status: 'DISPUTED',
+        reason: 'The parties need to review the delivered work together.',
         expectedVersion: detail.version,
       })
     ).status,
   ).toBe(201);
+});
+
+it('records both members concerns while resolution is open, without moving money', async () => {
+  const p = (await (await request('a', `pacts/${pactId}`)).json()).data;
+  expect(
+    (
+      await request('b', `pacts/${pactId}/transition`, {
+        status: 'DISPUTED',
+        expectedVersion: p.version,
+      })
+    ).status,
+  ).toBe(400);
+  const reason = 'The resume needs more detail about the backend projects.';
+  expect(
+    (
+      await request('a', `pacts/${pactId}/transition`, {
+        status: 'DISPUTED',
+        expectedVersion: p.version,
+        reason,
+      })
+    ).status,
+  ).toBe(201);
+  const a = (await (await request('a', `pacts/${pactId}`)).json()).data;
+  const b = (await (await request('b', `pacts/${pactId}`)).json()).data;
+  expect(a.transaction.state).toBe(p.transaction.state);
+  expect(
+    b.audit.find((e: { event_type: string }) => e.event_type === 'PACT_RESOLUTION_CONCERN').reason,
+  ).toBe(reason);
+  expect(
+    b.audit.find((e: { event_type: string }) => e.event_type === 'PACT_RESOLUTION_CONCERN')
+      .actorName,
+  ).toContain(' a ');
+  expect(a.audit).toEqual(b.audit);
 });

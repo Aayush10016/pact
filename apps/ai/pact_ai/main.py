@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from pact_ai.providers import NvidiaNimProvider, ProviderUnavailable, validated_assessment
-from pact_ai.schemas import AssessmentRequest
+from pact_ai.schemas import AssessmentRequest, CommitmentExtractionRequest
 
 app = FastAPI(title="Pact evidence service", version="0.2.0", docs_url="/docs")
 app.add_middleware(
@@ -51,6 +51,21 @@ async def assess(request: AssessmentRequest):
         raise HTTPException(
             status_code=503, detail="Advisory provider unavailable; your Pact remains available"
         )
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=502, detail="Provider output failed validation")
+
+
+@app.post("/v1/commitments/extract", dependencies=[Depends(service_identity)])
+async def extract_commitments(request: CommitmentExtractionRequest):
+    try:
+        result = await NvidiaNimProvider().extract_commitments(request)
+        return {
+            "data": result.model_dump(exclude_none=True),
+            "requiresHumanReview": True,
+            "model": os.getenv("NVIDIA_NIM_MODEL"),
+        }
+    except ProviderUnavailable:
+        raise HTTPException(status_code=503, detail="Advisory provider unavailable")
     except (ValueError, TypeError):
         raise HTTPException(status_code=502, detail="Provider output failed validation")
 

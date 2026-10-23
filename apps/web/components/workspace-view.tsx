@@ -29,6 +29,8 @@ export function WorkspaceView() {
 function PrivateWorkspace() {
   const records = useResource<Summary[]>('pacts');
   const invitations = useResource<Invitation[]>('me/invitations');
+  const notifications =
+    useResource<{ id: string; pact_id: string; type: string }[]>('me/notifications');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All pacts');
   const visible =
@@ -69,6 +71,29 @@ function PrivateWorkspace() {
           </div>
         </section>
       ))}
+      {!!notifications.data?.length && (
+        <section className="attention-panel" aria-labelledby="updates-title">
+          <div>
+            <p className="eyebrow">RECORD UPDATES</p>
+            <h2 id="updates-title">Some records need attention.</h2>
+            {notifications.data.slice(0, 5).map((n) => (
+              <p key={n.id}>
+                <Link className="text-link" href={`/workspace/pacts/${n.pact_id}`}>
+                  {(
+                    {
+                      EVIDENCE_SCAN_FAILED: 'Evidence scanning is unavailable.',
+                      EVIDENCE_QUARANTINED: 'Evidence was quarantined.',
+                      EVIDENCE_PROCESSING_FAILED: 'Evidence processing needs review.',
+                      ASSESSMENT_FAILED: 'Advisory assessment is unavailable.',
+                      PAYMENT_RECONCILIATION_REQUIRED: 'A payment requires operator review.',
+                    } as Record<string, string>
+                  )[n.type] || 'A shared record was updated.'}
+                </Link>
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
       {records.loading || records.error ? (
         <ResourceState loading={records.loading} error={records.error} retry={records.reload} />
       ) : (
@@ -116,7 +141,9 @@ function PrivateWorkspace() {
                     </div>
                   </div>
                   <span className={`badge ${p.status === 'DISPUTED' ? 'warning' : 'neutral'}`}>
-                    {p.status.replaceAll('_', ' ').toLowerCase()}
+                    {p.status === 'DISPUTED'
+                      ? 'Resolution requested'
+                      : p.status.replaceAll('_', ' ').toLowerCase()}
                   </span>
                   <span className="mono pact-money">
                     {formatMoney({ amountMinor: p.amount_minor, currency: p.currency })}

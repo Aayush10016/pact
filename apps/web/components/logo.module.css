@@ -1,0 +1,25 @@
+.mark {
+  display: inline-block;
+  width: 33px;
+  height: 38px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  mix-blend-mode: multiply;
+}
+.source {
+  position: absolute;
+  max-width: none;
+  width: 94px;
+  height: 94px;
+  left: -33px;
+  top: -23px;
+}
+.mark img {
+  object-fit: contain;
+}
+
+:global(.inverse) .mark {
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: screen;
+}

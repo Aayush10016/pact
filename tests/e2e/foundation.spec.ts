@@ -60,6 +60,13 @@ for (const route of [
 ]) {
   test(`accessible foundation ${route}`, async ({ page }) => {
     await page.goto(route);
+    if (route === '/sign-in' || route === '/sign-up') {
+      await expect(
+        page
+          .locator('.cl-card')
+          .or(page.getByText('Identity is not configured yet.', { exact: false })),
+      ).toBeVisible();
+    }
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
       .analyze();
@@ -67,15 +74,41 @@ for (const route of [
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+    expect(await page.locator('body').innerText()).not.toContain('\uFFFD');
   });
 }
 
-test('private workspace fails closed when identity is unconfigured', async ({ page }) => {
+test('private workspace requires configured identity and a signed-in member', async ({ page }) => {
   await page.goto('/workspace');
-  await expect(page.getByRole('heading', { name: 'Identity setup is required.' })).toBeVisible();
+  const gate = page.getByRole('heading', {
+    name: /^(Identity setup is required\.|A shared record starts with you\.)$/,
+  });
+  await expect(gate).toBeVisible();
+  const unconfigured = (await gate.innerText()) === 'Identity setup is required.';
   await expect(page.getByText('Illustrative records. No real payments or accounts.')).toHaveCount(
     0,
   );
   await page.goto('/sign-in');
-  await expect(page.getByText('Identity is not configured yet.', { exact: false })).toBeVisible();
+  if (unconfigured)
+    await expect(page.getByText('Identity is not configured yet.', { exact: false })).toBeVisible();
+  else await expect(page.locator('.cl-card')).toBeVisible({ timeout: 20000 });
+});
+test('Unicode and legitimate questions survive the browser draft unchanged', async ({ page }) => {
+  const text = 'José — आयुष “Café” → 🧾?';
+  await page.goto('/preview/new');
+  await page.getByLabel('Pact name', { exact: true }).fill(text);
+  await page.getByLabel('Other party’s email', { exact: true }).fill('unicode@example.test');
+  await page.getByLabel('What are you agreeing to?', { exact: true }).fill(text);
+  await page.getByLabel('Deliverable', { exact: true }).fill(text);
+  await page.getByLabel('Deadline', { exact: true }).fill('2099-10-30');
+  await page.getByLabel('Agreed amount', { exact: true }).fill('5000.00');
+  await page.getByLabel('When should payment be authorized?', { exact: true }).fill(text);
+  await page.getByRole('button', { name: 'Save preview draft' }).click();
+  await expect(page.getByRole('heading', { name: 'Your preview draft is saved.' })).toBeVisible();
+  const draft = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('pact-preview-draft')!),
+  );
+  expect(draft.title).toBe(text);
+  expect(draft.agreement).toBe(text);
+  expect(await page.locator('body').innerText()).not.toContain('\uFFFD');
 });

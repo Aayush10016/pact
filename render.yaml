@@ -1,0 +1,63 @@
+# API deployment definition only. This does not host the scanner/AI/storage/Redis.
+# Complete docs/RENDER_SUPABASE_VERCEL.md readiness gates before deployment.
+services:
+  - type: web
+    name: pact-sandbox-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./infrastructure/docker/node.Dockerfile
+    dockerContext: .
+    dockerCommand: node apps/api/dist/main.js
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: '10000'
+      - key: WORKERS_ENABLED
+        value: 'true'
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      - key: EVIDENCE_STORAGE
+        value: minio
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: PACT_TESTER_EMAILS
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: AI_SERVICE_KEY
+        sync: false
+      - key: CLAMAV_HOST
+        sync: false
+      - key: CLAMAV_PORT
+        sync: false
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_PUBLIC_ENDPOINT
+        sync: false
+      - key: MINIO_BUCKET_NAME
+        sync: false
+      - key: MINIO_ACCESS_KEY_ID
+        sync: false
+      - key: MINIO_SECRET_ACCESS_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PACT_OPERATOR_SUBJECTS
+        sync: false
+      - key: PACT_REVIEWER_SUBJECTS
+        sync: false
