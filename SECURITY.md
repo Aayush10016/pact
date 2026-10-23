@@ -12,8 +12,8 @@ establish authority.
 
 Evidence uses bounded uploads, MIME/header validation, random immutable private object keys,
 checksums and authorized expiring attachment downloads. PDF/DOCX stay quarantined until bounded
-extraction succeeds. No links are fetched from evidence. Image OCR and malware scanning are not
-implemented. Parser limits do not replace a production malware scanner.
+extraction succeeds. No links are fetched from evidence. The Phase 3 extension adds mandatory ClamAV scanning before processing or download.
+Image OCR remains disabled; scanner errors fail closed.
 
 Both distinct members approve an exact current proposal hash/version and evidence snapshot.
 A revision invalidates consent; in-flight financial execution blocks revisions. Integer money is
@@ -55,8 +55,8 @@ only reads PayPal and verifies persisted current consent, provider linkage and i
 The free HTTPS tunnel forwards only bounded webhook POSTs through a restricted relay. Retention
 is conservative and automatic deletion is disabled. See [Phase 3 details](docs/PHASE_3.md).
 
-`.env` is ignored. `.env.example` contains empty integration fields and clearly disposable local
-database credentials. Never reuse those defaults in deployment. Frontend public variables must
+`.env` and `.env.sandbox` are ignored. Example files contain empty secret fields; setup creates
+private random infrastructure credentials. Never commit the generated environment files. Frontend public variables must
 never contain private keys. Docker contexts exclude env files. CI needs no real integrations.
 The AI container receives no PayPal secrets; the API receives the configured private identity, storage and Sandbox settings.
 

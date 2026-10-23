@@ -21,26 +21,15 @@ function docker(args) {
 }
 const admin = new pg.Client({ connectionString: owner.href });
 await admin.connect();
-const tables = [
-  'pacts',
-  'parties',
-  'commitments',
-  'evidence',
-  'evidence_versions',
-  'resolutions',
-  'approvals',
-  'transactions',
-  'paypal_transactions',
-  'paypal_webhook_events',
-  'audit_events',
-  'reconciliation_reviews',
-];
+const tables = (
+  await admin.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")
+).rows.map((row) => row.tablename);
 async function snapshot(client) {
   const result = {};
   for (const table of tables) {
     const r = (
       await client.query(
-        `SELECT count(*)::int AS count,md5(COALESCE(string_agg(row_to_json(t)::text,'' ORDER BY row_to_json(t)::text),'')) AS fingerprint FROM ${table} t`,
+        `SELECT count(*)::int AS count,md5(COALESCE(string_agg(row_to_json(t)::text,'' ORDER BY row_to_json(t)::text),'')) AS fingerprint FROM public.${pg.escapeIdentifier(table)} t`,
       )
     ).rows[0];
     result[table] = r;

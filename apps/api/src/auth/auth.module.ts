@@ -1,3 +1,4 @@
+import { assertSandboxTester } from './sandbox-access';
 import { RequestLimiter } from './request-limiter';
 import { requestContext } from '../common/request-context';
 import {
@@ -108,6 +109,7 @@ export class AuthenticationGuard implements CanActivate {
     if (!auth?.startsWith('Bearer ') || auth.length > 8192 || auth.split('.').length !== 3)
       throw new ForbiddenException('A verified session is required.');
     const identity = await this.verifier.verify(auth.slice(7));
+    assertSandboxTester(identity.email);
     await this.db.ensureRuntimeRole();
     await this.limiter.consume(
       identity.subject,

@@ -73,6 +73,7 @@ jobs:
         with: { node-version: 24.18.0 }
       - run: node scripts/setup-local-env.mjs
       - run: docker compose config --quiet
+      - run: node scripts/test-sandbox-config.mjs
       - run: docker compose up --build --detach --wait --wait-timeout 300
       - run: docker compose exec -T api node scripts/minio-bootstrap.mjs
       - run: docker compose exec -T -e MINIO_PUBLIC_ENDPOINT=http://minio:9000 api node scripts/validate-local-security.mjs

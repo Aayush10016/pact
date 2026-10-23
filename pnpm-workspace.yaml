@@ -9,6 +9,7 @@ allowBuilds:
   msgpackr-extract: false
 
 overrides:
+  vite: 7.3.7
   '@clerk/backend': 3.22.0
   '@clerk/shared': 4.38.0
   '@clerk/react': 6.17.5

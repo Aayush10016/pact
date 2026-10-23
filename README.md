@@ -83,3 +83,7 @@ Python: `apps/ai/.venv/Scripts/python -m ruff check apps/ai` and
 `apps/ai/.venv/Scripts/python -m pytest apps/ai`.
 
 **AI understands. AI recommends. Humans authorize. PayPal executes.**
+
+## Invite-only hosted Sandbox
+
+See [Sandbox deployment and acceptance gates](docs/SANDBOX_DEPLOYMENT.md). The overlay uses separate volumes, HTTPS, private service ports and Sandbox-only payments. Run `pnpm sandbox:webhooks` to reconnect the restricted callback relay for local testing; hosted testing uses its own stable HTTPS callback.
