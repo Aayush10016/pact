@@ -4,5 +4,5 @@ pydantic==2.12.5
 httpx==0.28.1
 pytest==9.0.3
 ruff==0.14.10
-pypdf==6.19.0
-pillow==12.3.0
+pypdf==6.21.1
+pillow==13.0.0

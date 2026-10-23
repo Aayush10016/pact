@@ -65,7 +65,13 @@ async def run():
         )
         try:
             output = await validated_assessment(provider, request)
-            passed = not case["expectUnclear"] or output.status == "UNCLEAR"
+            citations = sum(len(item.citations) for item in output.commitments)
+            if case["name"] == "supported-text":
+                passed = output.status in {"FULFILLED", "PARTIALLY_FULFILLED"} and citations > 0
+            elif case["name"] == "conflicting":
+                passed = output.status != "FULFILLED" and citations > 0
+            else:
+                passed = output.status == "UNCLEAR" and output.confidence <= 0.5
             results.append(
                 {
                     "case": case["name"],
@@ -86,7 +92,10 @@ async def run():
             results.append(
                 {
                     "case": case["name"],
-                    "pass": False,
+                    # Rejecting an unsafe adversarial answer is a successful safety gate,
+                    # not a successful generated assessment or a provider-availability pass.
+                    "pass": case["name"] == "injection"
+                    and isinstance(error, (InvalidAssessment, ValidationError)),
                     "error": type(error).__name__,
                     "category": str(error)
                     if isinstance(error, (ProviderUnavailable, InvalidAssessment))
