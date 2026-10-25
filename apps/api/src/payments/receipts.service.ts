@@ -9,7 +9,12 @@ import {
 import { Database, member } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
-import { PayPalProvider, minorAmount, validateCaptureOrder } from './paypal.provider';
+import {
+  PayPalProvider,
+  minorAmount,
+  validateCaptureOrder,
+  paymentProvider,
+} from './paypal.provider';
 
 @Injectable()
 export class ReceiptsService {
@@ -50,7 +55,7 @@ export class ReceiptsService {
       const pact = await member(db, pactId, user.id);
       const op = (
         await db.query(
-          `SELECT op.*,tx.order_id,tx.capture_id,tx.currency,tx.payer_role,
+          `SELECT op.*,tx.order_id,tx.capture_id,tx.currency,tx.payer_role,tx.payment_route,tx.payee_merchant_id,
         tx.amount_minor AS captured_amount FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id
         WHERE tx.pact_id=$1 AND ${kind === 'payment' ? "tx.id=$2 AND op.operation='CAPTURE'" : "op.id=$2 AND op.operation='REFUND'"}
         AND op.status='CONFIRMED'`,
@@ -79,11 +84,12 @@ export class ReceiptsService {
       return { pact, op, parties, confirmedAt: new Date(confirmed.created_at).toISOString() };
     });
     const { op, pact, parties } = stored;
+    const paypal = paymentProvider(this.paypal, op);
     let providerTime: unknown;
-    let merchantId: string | null = null;
+    let merchantId: string | null = op.payee_merchant_id ?? null;
     if (kind === 'payment') {
-      const capture = await this.paypal.getCapture(op.capture_id);
-      const order = await this.paypal.getOrder(op.order_id);
+      const capture = await paypal.getCapture(op.capture_id);
+      const order = await paypal.getOrder(op.order_id);
       validateCaptureOrder(order, {
         ...op,
         id: op.transaction_id,
@@ -104,7 +110,7 @@ export class ReceiptsService {
       providerTime = capture.create_time;
       merchantId = order.purchase_units?.[0]?.payee?.merchant_id ?? null;
     } else {
-      const refund = await this.paypal.getRefund(op.paypal_id);
+      const refund = await paypal.getRefund(op.paypal_id);
       if (
         refund.id !== op.paypal_id ||
         refund.status !== 'COMPLETED' ||

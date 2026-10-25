@@ -12,6 +12,8 @@ import { Database, member, audit, enqueue } from '../database/database.module';
 import type { Identity } from '../auth/auth.module';
 import { parse } from '../pacts/lifecycle.service';
 import { evidenceSnapshot } from '../assessments/assessments.module';
+import { PayPalAccountsService } from '../accounts/paypal-accounts.module';
+import { paymentProvider } from './paypal.provider';
 import {
   CheckoutUnavailableError,
   PayPalProvider,
@@ -26,6 +28,7 @@ export class ResolutionService {
   constructor(
     @Inject(Database) readonly db: Database,
     @Inject(PayPalProvider) readonly paypal: PayPalProvider,
+    @Inject(PayPalAccountsService) readonly accounts: PayPalAccountsService,
   ) {}
   async propose(id: string, user: Identity, input: unknown) {
     parse(idSchema, id);
@@ -273,6 +276,41 @@ export class ResolutionService {
     parse(idSchema, id);
     if (!this.paypal.enabled())
       throw new ServiceUnavailableException('PayPal Sandbox is not configured.');
+    const routing = await this.db.transaction(async (db) => {
+      const pact = await member(db, id, user.id);
+      const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [id])).rows[0];
+      if (tx.payment_route !== 'CONNECTED') return null;
+      if (pact.role !== tx.payer_role)
+        throw new ForbiddenException('Only the payer can authorize this payment.');
+      if (
+        (
+          await db.query(
+            'SELECT 1 FROM paypal_transactions WHERE transaction_id=$1 AND operation=$2',
+            [tx.id, operation],
+          )
+        ).rowCount
+      )
+        return null;
+      if (pact.status !== 'ACTIVE' || !['CREATED', 'AUTHORIZED'].includes(tx.state))
+        throw new ConflictException('Payment is not open. Both members must accept the agreement.');
+      const recipient = (
+        await db.query('SELECT user_id FROM parties WHERE pact_id=$1 AND role<>$2', [
+          id,
+          tx.payer_role,
+        ])
+      ).rows[0];
+      if (!recipient)
+        throw new ConflictException('The recipient must accept this Pact before payment.');
+      return {
+        userId: recipient.user_id as string,
+        merchantId: tx.payee_merchant_id as string | null,
+      };
+    });
+    const verifiedPayee = routing ? await this.accounts.requireReady(routing.userId) : null;
+    if (routing?.merchantId && routing.merchantId !== verifiedPayee)
+      throw new ConflictException(
+        'This payment is bound to the original receiving account. Contact support.',
+      );
     {
       const preflight = await this.db.transaction(async (db) => {
         const p = await member(db, id, user.id);
@@ -296,7 +334,7 @@ export class ResolutionService {
       let order;
       if (preflight.orderId) {
         try {
-          order = await this.paypal.getOrder(preflight.orderId!);
+          order = await paymentProvider(this.paypal, preflight.tx!).getOrder(preflight.orderId!);
         } catch (error) {
           if (error instanceof ProviderError)
             await this.db.transaction(async (db) => {
@@ -335,6 +373,30 @@ export class ResolutionService {
         )
       ).rows[0];
       if (prior) return prior;
+      if (tx.payment_route === 'CONNECTED') {
+        if (!routing || !verifiedPayee)
+          throw new ConflictException('The recipient must verify their PayPal connection.');
+        const recipient = (
+          await db.query('SELECT user_id FROM parties WHERE pact_id=$1 AND role<>$2', [
+            id,
+            tx.payer_role,
+          ])
+        ).rows[0];
+        const account = (
+          await db.query(
+            "SELECT merchant_id FROM paypal_accounts WHERE user_id=$1 AND status='READY' FOR SHARE",
+            [routing.userId],
+          )
+        ).rows[0];
+        if (
+          recipient?.user_id !== routing.userId ||
+          account?.merchant_id !== verifiedPayee ||
+          (tx.payee_merchant_id && tx.payee_merchant_id !== verifiedPayee)
+        )
+          throw new ConflictException('Recipient verification changed. Refresh before paying.');
+        if (!tx.payee_merchant_id)
+          await db.query('SELECT bind_connected_payee($1,$2,$3)', [tx.id, user.id, verifiedPayee]);
+      }
       if (!['CREATED', 'AUTHORIZED'].includes(tx.state))
         throw new ConflictException('Payment has already been started or completed.');
       const result = await db.query(

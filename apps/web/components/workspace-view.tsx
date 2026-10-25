@@ -75,7 +75,7 @@ function PrivateWorkspace() {
         <section className="attention-panel" aria-labelledby="updates-title">
           <div>
             <p className="eyebrow">RECORD UPDATES</p>
-            <h2 id="updates-title">Some records need attention.</h2>
+            <h2 id="updates-title">Recorded issues to review.</h2>
             {notifications.data.slice(0, 5).map((n) => (
               <p key={n.id}>
                 <Link className="text-link" href={`/workspace/pacts/${n.pact_id}`}>
@@ -84,7 +84,8 @@ function PrivateWorkspace() {
                       EVIDENCE_SCAN_FAILED: 'Evidence scanning is unavailable.',
                       EVIDENCE_QUARANTINED: 'Evidence was quarantined.',
                       EVIDENCE_PROCESSING_FAILED: 'Evidence processing needs review.',
-                      ASSESSMENT_FAILED: 'Advisory assessment is unavailable.',
+                      ASSESSMENT_FAILED:
+                        'An assessment attempt failed. Open the record for its latest result.',
                       PAYMENT_RECONCILIATION_REQUIRED: 'A payment requires operator review.',
                     } as Record<string, string>
                   )[n.type] || 'A shared record was updated.'}
@@ -203,8 +204,9 @@ function PrivateWorkspace() {
         <section>
           <h2>Payment follows consent.</h2>
           <p className="muted">
-            AI recommendations are advisory. Both parties must approve the exact resolution before a
-            financial action is submitted.
+            AI recommendations are advisory. Both parties can agree on a resolution, or request an
+            independent Pact reviewer to hear both sides. An authorized reviewer can approve a
+            refund after reviewing the evidence; a request alone does not move money.
           </p>
         </section>
       </div>

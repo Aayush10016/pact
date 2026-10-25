@@ -386,8 +386,10 @@ function PrivateDetail({ id }: { id: string }) {
                 <div className="notice">
                   <LockKeyhole size={19} />
                   <p>
-                    Sandbox only. Checkout pays the configured developer merchant account; Pact is
-                    not escrow. Payment and fulfillment are separate records.
+                    {p.transaction.payment_route === 'CONNECTED'
+                      ? 'Sandbox only. Checkout pays the receiving member’s verified connected PayPal account. Permissions are rechecked before payment.'
+                      : 'Sandbox only. This legacy checkout pays the configured developer merchant account.'}{' '}
+                    Pact is not escrow. Payment and fulfillment are separate records.
                   </p>
                 </div>
                 {capabilities.error && <p role="alert">{capabilities.error}</p>}

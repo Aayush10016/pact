@@ -5,10 +5,15 @@ const { values } = parseArgs({
     url: { type: 'string' },
     'env-file': { type: 'string', default: '.env' },
     'replace-current': { type: 'boolean', default: false },
+    platform: { type: 'boolean', default: false },
   },
 });
 const envFile = values['env-file'];
 process.loadEnvFile(envFile);
+const prefix = values.platform ? 'PAYPAL_PLATFORM' : 'PAYPAL';
+const clientId = process.env[`${prefix}_CLIENT_ID`];
+const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
+const webhookKey = `${prefix}_WEBHOOK_ID`;
 const legacy = values.url ? null : readFileSync('.tunnel-phase3-error.log', 'utf8');
 const candidate =
   values.url ||
@@ -38,16 +43,11 @@ const reachable = await fetch(url, {
 if (reachable.status !== 403)
   throw new Error('Unsigned webhook was not safely rejected; registration stopped.');
 const api = 'https://api-m.sandbox.paypal.com';
-if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET)
-  throw new Error('Configure local PayPal Sandbox credentials.');
+if (!clientId || !clientSecret) throw new Error('Configure local PayPal Sandbox credentials.');
 const tokenResponse = await fetch(api + '/v1/oauth2/token', {
   method: 'POST',
   headers: {
-    Authorization:
-      'Basic ' +
-      Buffer.from(process.env.PAYPAL_CLIENT_ID + ':' + process.env.PAYPAL_CLIENT_SECRET).toString(
-        'base64',
-      ),
+    Authorization: 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
     'content-type': 'application/x-www-form-urlencoded',
   },
   body: 'grant_type=client_credentials',
@@ -69,9 +69,11 @@ const events = [
   'PAYMENT.CAPTURE.COMPLETED',
   'PAYMENT.CAPTURE.REFUNDED',
   'PAYMENT.CAPTURE.DENIED',
+  'MERCHANT.ONBOARDING.COMPLETED',
+  'MERCHANT.PARTNER-CONSENT.REVOKED',
 ];
 if (!webhook && values['replace-current']) {
-  const current = webhooks.find((w) => w.id === process.env.PAYPAL_WEBHOOK_ID);
+  const current = webhooks.find((w) => w.id === process.env[webhookKey]);
   if (current) {
     const patched = await fetch(api + '/v1/notifications/webhooks/' + current.id, {
       method: 'PATCH',
@@ -109,13 +111,14 @@ if (
 )
   throw new Error('Registered webhook does not match required configuration.');
 const env = readFileSync(envFile, 'utf8');
-const next = /^PAYPAL_WEBHOOK_ID=/m.test(env)
-  ? env.replace(/^PAYPAL_WEBHOOK_ID=.*$/gm, 'PAYPAL_WEBHOOK_ID=' + webhook.id)
-  : env + '\nPAYPAL_WEBHOOK_ID=' + webhook.id + '\n';
+const next = new RegExp(`^${webhookKey}=`, 'm').test(env)
+  ? env.replace(new RegExp(`^${webhookKey}=.*$`, 'gm'), webhookKey + '=' + webhook.id)
+  : env + '\n' + webhookKey + '=' + webhook.id + '\n';
 writeFileSync(envFile, next);
 console.log(
   JSON.stringify({
     sandboxOAuth: 'PASS',
+    app: values.platform ? 'PLATFORM' : 'LEGACY',
     restrictedTunnel: 'PASS',
     unsignedWebhook: 'REJECTED',
     registration: 'PASS',

@@ -41,8 +41,22 @@ const testers = (env.PACT_TESTER_EMAILS || '')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
-if (!testers.length || testers.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
-  failures.push('PACT_TESTER_EMAILS needs the invited verified tester emails');
+if (testers.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
+  failures.push(
+    'PACT_TESTER_EMAILS must be empty for public registration, or contain valid verified emails for an optional private test',
+  );
+if (testers.length)
+  warnings.push(
+    'This deployment restricts sign-in to PACT_TESTER_EMAILS. Leave it empty for public registration.',
+  );
+if (
+  ['CLIENT_ID', 'CLIENT_SECRET', 'MERCHANT_ID', 'ATTRIBUTION_ID', 'WEBHOOK_ID'].some(
+    (key) => !env[`PAYPAL_PLATFORM_${key}`],
+  )
+)
+  warnings.push(
+    'Connected-recipient payments need an approved PayPal platform app and its partner configuration.',
+  );
 if (env.PACT_HOST === env.PACT_FILES_HOST)
   failures.push('Use distinct application and download hostnames');
 if (env.PAYPAL_BASE_URL !== 'https://api-m.sandbox.paypal.com')

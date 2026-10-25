@@ -24,7 +24,12 @@ import {
 } from '../auth/auth.module';
 import { Database, member, audit } from '../database/database.module';
 import { parse } from '../pacts/lifecycle.service';
-import { PayPalProvider, minorAmount } from './paypal.provider';
+import {
+  PayPalProvider,
+  minorAmount,
+  paymentProvider,
+  validateCaptureOrder,
+} from './paypal.provider';
 import { PaymentsModule } from './payments.module';
 import { retentionDecision } from '../evidence/retention';
 
@@ -114,6 +119,59 @@ export class ReconciliationService {
   }
   async refreshCapture(pactId: string, actor: Identity) {
     parse(idSchema, pactId);
+    const parent = await this.db.transaction(async (db) => {
+      await member(db, pactId, actor.id);
+      return (
+        await db.query(
+          "SELECT tx.* FROM transactions tx WHERE tx.pact_id=$1 AND tx.state='CAPTURED' AND tx.capture_id IS NOT NULL AND EXISTS(SELECT 1 FROM paypal_transactions op WHERE op.transaction_id=tx.id AND op.operation='ORDER' AND op.paypal_id=tx.order_id AND op.status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION'))",
+          [pactId],
+        )
+      ).rows[0];
+    });
+    if (parent) {
+      const provider = paymentProvider(this.paypal, parent);
+      const order = await provider.getOrder(parent.order_id);
+      const capture = await provider.getCapture(parent.capture_id);
+      validateCaptureOrder(order, {
+        id: parent.id,
+        order_id: parent.order_id,
+        amount_minor: parent.amount_minor,
+        currency: parent.currency,
+        payment_route: parent.payment_route,
+        payee_merchant_id: parent.payee_merchant_id,
+      });
+      if (
+        order.status !== 'COMPLETED' ||
+        capture.id !== parent.capture_id ||
+        capture.status !== 'COMPLETED' ||
+        !order.purchase_units?.[0]?.payments?.captures?.some((c) => c.id === capture.id)
+      )
+        throw new ConflictException(
+          'PayPal has not confirmed the stored order and capture relationship.',
+        );
+      amountMatches(capture.amount, parent.amount_minor, parent.currency);
+      await this.db.transaction(async (db) => {
+        await member(db, pactId, actor.id, true);
+        const current = (
+          await db.query('SELECT * FROM transactions WHERE id=$1 FOR UPDATE', [parent.id])
+        ).rows[0];
+        if (
+          current.state !== 'CAPTURED' ||
+          current.version !== parent.version ||
+          current.order_id !== parent.order_id ||
+          current.capture_id !== parent.capture_id
+        )
+          throw new ConflictException('Payment changed during confirmation. Refresh again.');
+        const changed = await db.query(
+          "UPDATE paypal_transactions SET status='CONFIRMED',failure_code=NULL,updated_at=now() WHERE transaction_id=$1 AND operation='ORDER' AND paypal_id=$2 AND status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION')",
+          [parent.id, parent.order_id],
+        );
+        if (changed.rowCount)
+          await audit(db, pactId, actor.id, 'PAYPAL_PARENT_ORDER_CONFIRMED', {
+            transactionId: parent.id,
+          });
+      });
+    }
     const op = await this.db.transaction(async (db) => {
       await member(db, pactId, actor.id);
       const tx = (await db.query('SELECT * FROM transactions WHERE pact_id=$1', [pactId])).rows[0];
@@ -167,7 +225,7 @@ export class ReconciliationService {
     }
     const op = (
       await this.db.query(
-        'SELECT op.*,tx.pact_id,tx.order_id,tx.capture_id,tx.currency,tx.amount_minor AS captured_amount FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id WHERE op.id=$1',
+        'SELECT op.*,tx.pact_id,tx.order_id,tx.capture_id,tx.currency,tx.payment_route,tx.payee_merchant_id,tx.amount_minor AS captured_amount FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id WHERE op.id=$1',
         [operationId],
       )
     ).rows[0];
@@ -189,20 +247,23 @@ export class ReconciliationService {
       });
     });
     // This service exposes GET/readback only. It never invokes createOrder/capture/refund.
+    const paypal = paymentProvider(this.paypal, op);
     if (op.operation === 'ORDER') {
-      const order = await this.paypal.getOrder(input.providerId);
+      const order = await paypal.getOrder(input.providerId);
       if (
         order.id !== input.providerId ||
         !['CREATED', 'APPROVED', 'COMPLETED'].includes(order.status) ||
         order.purchase_units?.length !== 1 ||
-        order.purchase_units[0]?.custom_id !== op.transaction_id
+        order.purchase_units[0]?.custom_id !== op.transaction_id ||
+        (op.payment_route === 'CONNECTED' &&
+          order.purchase_units[0]?.payee?.merchant_id !== op.payee_merchant_id)
       )
         throw new ConflictException('Order ownership mismatch.');
       amountMatches(order.purchase_units[0]?.amount, op.amount_minor, op.currency);
     } else if (op.operation === 'CAPTURE') {
       if (!op.order_id) throw new ConflictException('Stored order is required.');
-      const capture = await this.paypal.getCapture(input.providerId);
-      const order = await this.paypal.getOrder(op.order_id);
+      const capture = await paypal.getCapture(input.providerId);
+      const order = await paypal.getOrder(op.order_id);
       if (
         capture.id !== input.providerId ||
         capture.status !== 'COMPLETED' ||
@@ -213,6 +274,8 @@ export class ReconciliationService {
         order.intent !== 'CAPTURE' ||
         order.purchase_units?.length !== 1 ||
         order.purchase_units[0]?.custom_id !== op.transaction_id ||
+        (op.payment_route === 'CONNECTED' &&
+          order.purchase_units[0]?.payee?.merchant_id !== op.payee_merchant_id) ||
         !order.purchase_units[0]?.payments?.captures?.some((c) => c.id === capture.id)
       )
         throw new ConflictException('Capture ownership or completion mismatch.');
@@ -221,7 +284,7 @@ export class ReconciliationService {
     } else if (op.operation === 'REFUND') {
       if (!op.capture_id || !op.resolution_id)
         throw new ConflictException('Authorized refund record required.');
-      const refund = await this.paypal.getRefund(input.providerId);
+      const refund = await paypal.getRefund(input.providerId);
       if (
         refund.id !== input.providerId ||
         refund.status !== 'COMPLETED' ||
@@ -276,6 +339,10 @@ export class ReconciliationService {
         await db.query(
           "UPDATE transactions SET state='CAPTURED',capture_id=$2,version=version+1,updated_at=now() WHERE id=$1",
           [tx.id, input.providerId],
+        );
+        await db.query(
+          "UPDATE paypal_transactions SET status='CONFIRMED',failure_code=NULL,updated_at=now() WHERE transaction_id=$1 AND operation='ORDER' AND paypal_id=$2 AND status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION')",
+          [tx.id, tx.order_id],
         );
       } else {
         const r = (

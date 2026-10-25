@@ -9,6 +9,7 @@ export default function Home() {
           <Logo />
         </Link>
         <nav aria-label="Main navigation">
+          <Link href="/marketplace">Find services</Link>
           <a href="#how-it-works">How it works</a>
           <a href="#built-for-trust">Built for trust</a>
         </nav>
@@ -40,6 +41,9 @@ export default function Home() {
               <a className="text-link" href="#how-it-works">
                 See how it works <span>↗</span>
               </a>
+              <Link className="text-link" href="/marketplace">
+                Find a service <ArrowUpRight size={16} />
+              </Link>
             </div>
             <p className="quiet-caption">
               <LockKeyhole size={14} />

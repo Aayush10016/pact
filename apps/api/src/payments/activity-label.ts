@@ -27,6 +27,7 @@ export function activityLabel(
     MILESTONE_DELIVERED: 'Delivery recorded',
     PAYMENT_AUTHORIZED_BY_PROVIDER: 'Payment authorization received',
     PAYMENT_CAPTURED: 'Payment completed',
+    PAYPAL_PARENT_ORDER_CONFIRMED: 'PayPal checkout verified against the completed payment',
     PAYMENT_DECLINED: 'Payment declined',
     PAYMENT_RECONCILIATION_REQUIRED: 'Payment needs review',
     PAYMENT_PREFLIGHT_FAILED: 'Checkout could not be verified',

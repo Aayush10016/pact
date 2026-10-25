@@ -1,4 +1,6 @@
 import { ReputationModule } from './support/reputation.module';
+import { MarketplaceModule } from './marketplace/marketplace.module';
+import { PayPalAccountsModule } from './accounts/paypal-accounts.module';
 import { SupportModule } from './support/support.module';
 import { CapabilitiesModule } from './capabilities.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -13,6 +15,8 @@ import { ReconciliationModule } from './payments/reconciliation';
 @Module({
   imports: [
     DatabaseModule,
+    MarketplaceModule,
+    PayPalAccountsModule,
     SupportModule,
     ReputationModule,
     CapabilitiesModule,

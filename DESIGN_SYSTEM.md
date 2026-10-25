@@ -16,12 +16,12 @@ Joining is selected: two upright commitments connected by a common bridge, repro
 | bg      | #F7F5EF | #14221D      |
 | surface | #FFFFFF | #1D302A      |
 | ink     | #1D302A | #F7F5EF      |
-| brand   | #215C49 | #E3EDE6      |
+| brand   | #32755E | #E3EDE6      |
 | muted   | #55665D | #DADFD7      |
 | line    | #DADFD7 | #40554A      |
 | subtle  | #E3EDE6 | #40554A      |
 | accent  | #9B4B2F | #F7F5EF      |
-| success | #215C49 | #E3EDE6      |
+| success | #32755E | #E3EDE6      |
 | warning | #805C16 | #F7F5EF      |
 | error   | #AC342D | #F7F5EF      |
 | info    | #345C6B | #DADFD7      |
@@ -30,6 +30,9 @@ Figma primitives alias semantic variables with CSS code syntax. Starter allows o
 collection, so Light and Dark are separate collections. The coded app currently ships the
 light theme only; dark mappings are a foundation, not a complete dark-mode implementation.
 Status color always accompanies text. Copper is used sparingly and for visible focus rings.
+The user-requested lighter green is shared by actions, links, success states and Clerk controls.
+Hover uses #2B6853. Primary green retains at least 4.5:1 contrast on white, page and subtle surfaces.
+This palette update supersedes the earlier Figma green; the supplied raster logo is unchanged.
 
 ## Typography
 

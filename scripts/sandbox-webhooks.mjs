@@ -9,6 +9,7 @@ import {
   closeSync,
 } from 'node:fs';
 import { join } from 'node:path';
+process.loadEnvFile('.env');
 mkdirSync('.recovery-local', { recursive: true });
 const lock = '.recovery-local/sandbox-webhooks.lock';
 if (existsSync(lock)) {
@@ -138,6 +139,24 @@ try {
     child.on('exit', resolve);
   });
   if (result !== 0) throw new Error('Sandbox webhook registration failed.');
+  if (process.env.PAYPAL_PLATFORM_CLIENT_ID && process.env.PAYPAL_PLATFORM_CLIENT_SECRET) {
+    const platformResult = await new Promise((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [
+          'scripts/register-paypal-webhook.mjs',
+          '--platform',
+          '--url',
+          url + '/v1/webhooks/paypal',
+          '--replace-current',
+        ],
+        { windowsHide: true, stdio: 'inherit' },
+      );
+      child.on('error', () => resolve(1));
+      child.on('exit', resolve);
+    });
+    if (platformResult !== 0) throw new Error('Platform Sandbox webhook registration failed.');
+  }
   writeFileSync(
     '.recovery-local/sandbox-webhooks.json',
     JSON.stringify({ url: url + '/v1/webhooks/paypal', pid: process.pid }),

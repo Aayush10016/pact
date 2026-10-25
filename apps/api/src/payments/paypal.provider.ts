@@ -99,6 +99,8 @@ export function validateCaptureOrder(
     order_id: string;
     amount_minor: string;
     currency: string;
+    payment_route?: string;
+    payee_merchant_id?: string | null;
   },
 ) {
   const unit = order.purchase_units?.[0];
@@ -107,6 +109,8 @@ export function validateCaptureOrder(
     order.id !== tx.order_id ||
     order.purchase_units?.length !== 1 ||
     unit.custom_id !== tx.id ||
+    (tx.payment_route === 'CONNECTED' &&
+      (!tx.payee_merchant_id || unit.payee?.merchant_id !== tx.payee_merchant_id)) ||
     (order.intent !== undefined && order.intent !== 'CAPTURE')
   )
     throw new ConflictException(
@@ -148,11 +152,44 @@ export interface PaymentProvider {
 @Injectable()
 export class PayPalProvider implements PaymentProvider {
   private token?: { value: string; expires: number };
+  private merchantId?: string;
+  private platformMode = false;
+  private platformProvider?: PayPalProvider;
+  platform() {
+    if (this.platformMode) return this;
+    if (!this.platformProvider) {
+      this.platformProvider = new PayPalProvider();
+      this.platformProvider.platformMode = true;
+    }
+    return this.platformProvider;
+  }
+  private setting(name: 'CLIENT_ID' | 'CLIENT_SECRET' | 'WEBHOOK_ID') {
+    return process.env[`${this.platformMode ? 'PAYPAL_PLATFORM' : 'PAYPAL'}_${name}`];
+  }
+  forMerchant(merchantId: string) {
+    if (!/^[A-Z0-9]{8,32}$/.test(merchantId) || !this.partnerConfigured())
+      throw new ServiceUnavailableException(
+        'PayPal platform onboarding is not configured. No money will be sent to a different account.',
+      );
+    const scoped = new PayPalProvider();
+    scoped.platformMode = true;
+    scoped.token = this.platform().token;
+    scoped.merchantId = merchantId;
+    return scoped;
+  }
+  partnerConfigured() {
+    return (
+      this.platform().enabled() &&
+      /^[A-Z0-9]{8,32}$/.test(process.env.PAYPAL_PLATFORM_MERCHANT_ID ?? '') &&
+      /^[A-Za-z0-9_-]{3,100}$/.test(process.env.PAYPAL_PLATFORM_ATTRIBUTION_ID ?? '') &&
+      process.env.PAYPAL_BASE_URL === 'https://api-m.sandbox.paypal.com'
+    );
+  }
   enabled() {
     return !!(
-      process.env.PAYPAL_CLIENT_ID &&
-      process.env.PAYPAL_CLIENT_SECRET &&
-      process.env.PAYPAL_WEBHOOK_ID
+      this.setting('CLIENT_ID') &&
+      this.setting('CLIENT_SECRET') &&
+      this.setting('WEBHOOK_ID')
     );
   }
   private base() {
@@ -169,9 +206,9 @@ export class PayPalProvider implements PaymentProvider {
       headers: {
         Authorization:
           'Basic ' +
-          Buffer.from(
-            `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`,
-          ).toString('base64'),
+          Buffer.from(`${this.setting('CLIENT_ID')}:${this.setting('CLIENT_SECRET')}`).toString(
+            'base64',
+          ),
         'content-type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
@@ -203,6 +240,17 @@ export class PayPalProvider implements PaymentProvider {
         'content-type': 'application/json',
         Prefer: 'return=representation',
         ...(key ? { 'PayPal-Request-Id': key } : {}),
+        ...(this.platformMode && this.partnerConfigured()
+          ? { 'PayPal-Partner-Attribution-Id': process.env.PAYPAL_PLATFORM_ATTRIBUTION_ID! }
+          : {}),
+        ...(this.merchantId
+          ? {
+              'PayPal-Auth-Assertion': paypalAuthAssertion(
+                this.setting('CLIENT_ID')!,
+                this.merchantId,
+              ),
+            }
+          : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(20000),
@@ -234,7 +282,11 @@ export class PayPalProvider implements PaymentProvider {
         {
           intent: 'CAPTURE',
           purchase_units: [
-            { custom_id: id, amount: { currency_code: currency, value: decimalAmount(minor) } },
+            {
+              custom_id: id,
+              amount: { currency_code: currency, value: decimalAmount(minor) },
+              ...(this.merchantId ? { payee: { merchant_id: this.merchantId } } : {}),
+            },
           ],
           payment_source: {
             paypal: {
@@ -283,6 +335,18 @@ export class PayPalProvider implements PaymentProvider {
     );
   }
   async verify(headers: Record<string, string>, event: unknown) {
+    if (this.platformMode) return this.verifyCurrent(headers, event);
+    const results = await Promise.allSettled([
+      this.verifyCurrent(headers, event),
+      this.platform().verifyCurrent(headers, event),
+    ]);
+    return results.some((r) => r.status === 'fulfilled' && r.value);
+  }
+  async verifyPlatform(headers: Record<string, string>, event: unknown) {
+    return this.platform().verifyCurrent(headers, event);
+  }
+  private async verifyCurrent(headers: Record<string, string>, event: unknown) {
+    if (!this.enabled()) return false;
     const cert = headers['paypal-cert-url'];
     if (
       !cert ||
@@ -299,10 +363,29 @@ export class PayPalProvider implements PaymentProvider {
         transmission_id: headers['paypal-transmission-id'],
         transmission_sig: headers['paypal-transmission-sig'],
         transmission_time: headers['paypal-transmission-time'],
-        webhook_id: process.env.PAYPAL_WEBHOOK_ID,
+        webhook_id: this.setting('WEBHOOK_ID'),
         webhook_event: event,
       }),
     );
     return result.verification_status === 'SUCCESS';
   }
+}
+export function paypalAuthAssertion(clientId: string, merchantId: string) {
+  return (
+    Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url') +
+    '.' +
+    Buffer.from(JSON.stringify({ iss: clientId, payer_id: merchantId })).toString('base64url') +
+    '.'
+  );
+}
+export function paymentProvider(
+  provider: PayPalProvider,
+  tx: { payment_route?: string; payee_merchant_id?: string | null },
+) {
+  if (tx.payment_route !== 'CONNECTED') return provider;
+  if (!tx.payee_merchant_id)
+    throw new ConflictException(
+      'The person receiving payment must connect and verify their PayPal account first.',
+    );
+  return provider.forMerchant(tx.payee_merchant_id);
 }

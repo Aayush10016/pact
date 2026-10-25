@@ -8,6 +8,7 @@ import { ArrowUpRight, Plus } from 'lucide-react';
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const preview = path.startsWith('/preview');
+  const marketplace = path.startsWith('/marketplace');
   const prefix = preview ? '/preview' : '/workspace';
   return (
     <>
@@ -17,7 +18,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <Logo />
           </Link>
           <nav aria-label="Workspace">
-            {!preview && <Link href="/workspace/sellers">Seller reviews</Link>}
+            {!preview && <Link href="/marketplace">Find services</Link>}
+            {!preview && (
+              <details className="account-navigation">
+                <summary>Your account</summary>
+                <div>
+                  <Link href="/workspace/services">Your services</Link>
+                  <Link href="/workspace/account">PayPal connection</Link>
+                  <Link href="/workspace/sellers">Agreement reviews</Link>
+                </div>
+              </details>
+            )}
             {!preview && <ReviewDeskLink />}
             <Link href={prefix} aria-current={path === '/workspace' ? 'page' : undefined}>
               Your pacts
@@ -42,13 +53,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
-      <div className="preview-bar">
+      <div className="preview-bar" role="region" aria-label="Sandbox and privacy notice">
         <div className="container">
-          <span className="mono">{preview ? 'DESIGN PREVIEW' : 'PRIVATE WORKSPACE'}</span>
+          <span className="mono">
+            {preview ? 'DESIGN PREVIEW' : marketplace ? 'PUBLIC MARKETPLACE' : 'PRIVATE WORKSPACE'}
+          </span>
           <span>
             {preview
               ? 'Illustrative records. No real payments or accounts.'
-              : 'Shared with Pact members. Sandbox payments only.'}
+              : marketplace
+                ? 'Published services are public. Agreements and evidence stay private.'
+                : 'Shared with Pact members. Sandbox payments only.'}
           </span>
           <Link href="/about">
             About this foundation <ArrowUpRight size={14} />

@@ -172,3 +172,98 @@ Added an explicitly Free Render API definition and Vercel monorepo configuration
 Final `pnpm check` passed: encoding, lint, types, 65 unit/UI tests and production API/web builds. Format and configured-secret scans passed. Render configuration matched its official JSON Schema. The selected Vercel configuration fields validated against its published schema, but the vendor schema itself emitted a meta-validation warning in an unrelated trigger definition; this is not a successful strict meta-schema validation of the entire upstream document. Cloud dashboard validation is still required.
 
 The browser reached Render sign-in; no deployment was created and no key was sent to a hosting provider. The local Docker engine was unavailable during this preparation, so integration/container/browser suites were not rerun against these changes; earlier results are recorded above and are not substituted for cloud acceptance. Live cross-origin preflight, real 8 MB upload, Supabase role/TLS/Data API isolation, cloud queue/AI/scanner/storage and signed PayPal Sandbox delivery remain unverified. Free scanner memory and secure connectivity remain unresolved. The deployment guide explicitly distinguishes these gates from a complete running application.
+
+# Marketplace implementation and local acceptance — 2026-10-24
+
+This is the latest validation entry; earlier sections retain the previous phases and their historical limitations.
+
+Implemented public service discovery, service/name/category search, private listing drafts, versioned editing and publishing, agreement snapshots, correct delivering-party ownership and delivery dates from acceptance. One member can buy and offer services. Verified direct connected agreements use a separate explicitly selected endpoint and bind the receiving member's merchant before creation. Existing developer-merchant payment ownership is preserved.
+
+PayPal onboarding uses durable account tracking, PayPal-hosted redirects and official merchant-integration readback. Browser return flags are not trusted. Merchant eligibility, confirmed email and exact platform payment/refund grants are checked. Order, capture, refund, receipt and reconciliation requests retain the transaction's bound merchant context. Signed onboarding/revocation event handling and webhook registration were added. Runtime database permissions remain restricted; migration 010 provides narrow checked functions instead of general recipient/deadline update privileges.
+
+A real lifecycle defect was found and repaired: a missed order-approval webhook could leave an order attempt pending even after a verified completed capture, blocking human review. Capture confirmation now settles only its matching parent order. Existing captured records can repair this state through authenticated provider readback without another financial submission. Wrong-merchant readback is rejected.
+
+## Passed checks
+
+- `pnpm check`: encoding, shared packages, lint, type checks, 68 unit tests and API/Next production builds. Final touched files also passed lint/unit checks, frontend production rebuild and Docker compilation.
+- `node scripts/test-integration-local.mjs`: 38 tests against isolated real PostgreSQL/Redis. External identity/PayPal boundaries use explicit test doubles. Coverage includes public/private access, listing version changes, exact snapshot prices, idempotency, correct promising party, direct bound recipients, revoked permission, wrong merchant, runtime privilege denial, immutable recipient binding, one capture, shared receipts, independent human review, refund despite seller disagreement, one refund execution and moderated verified reviews.
+- Playwright: all 52 desktop/mobile browser checks passed, followed by all 4 marketplace checks after the final typography correction. New marketplace screens passed accessibility and horizontal-overflow checks. Browser provider/data fixtures are isolated test stubs.
+- Python: Ruff and all 28 unit tests passed. An initial run mixed real local host configuration into the test environment and failed four host-header checks; rerunning in the intended clean test environment passed without weakening application host restrictions.
+- Actual NVIDIA provider: baseline extraction, supported evidence, missing evidence, conflicting evidence and injection cases passed. A synthetic backend resume linked to its commitment returned FULFILLED with an 85% advisory deliverable match and an exact citation. No private resume was submitted in this validation pass, and no stored analysis was rewritten.
+- Real PostgreSQL backup/restore passed for all 27 original tables before migration and all 30 expanded tables afterward. A separate comparison of every original data column across 26 original application tables found no changes; the migration ledger is intentionally excluded. All 38 original Pacts remain. Backups and private reports are in ignored `.recovery-local` folders.
+- Both additive migrations applied successfully locally. API, web and migration Docker builds passed. All seven running services are healthy. Landing, marketplace, account/services pages, API readiness and AI health returned HTTP 200. Public catalogue returned HTTP 200; anonymous listing management returned HTTP 403.
+- Hosted Compose isolation checks, patch checks and configured-secret scan passed. No real secrets were added to source. Public registration is the default when `PACT_TESTER_EMAILS` is empty; private agreement membership and staff allowlists remain enforced.
+
+## External release gates still open
+
+The local environment has the existing Clerk, NVIDIA and single-merchant PayPal configuration. `PAYPAL_PARTNER_MERCHANT_ID` and `PAYPAL_PARTNER_ATTRIBUTION_ID` are empty. The existing REST app has not been independently validated as an approved PayPal platform app. Real seller onboarding, platform permissions, a real connected Sandbox checkout/capture, signed cloud callback delivery and an authorized connected Sandbox refund are therefore not claimed as passed. Missing platform setup fails closed and does not redirect money to the developer merchant.
+
+No public cloud deployment was created. Provider accounts, complete always-running cloud services, hosted Clerk registration/origins, private scanner/storage/AI connectivity, cloud database isolation and cloud end-to-end acceptance remain deployment work. The product remains Sandbox-only; production-money endpoints are disabled. See [Marketplace setup and boundaries](MARKETPLACE.md).
+
+Automatic approval review initially rejected deleting the temporary Docker recovery copies without explicit consent. The user subsequently approved deleting those two task-created copies. Cleanup recovered about 26 GB; approximately 30.8 GB is now free. The live disks and verified Pact database backups remain intact, all seven services remain healthy, and API readiness still returns HTTP 200.
+
+### 2026-10-24 — Signed-in usability review
+
+- Reviewed the actual Test 3 agreement, assessment, resolution and confirmed payment receipt in the signed-in browser. The receipt records a $1,000 Sandbox capture to the legacy developer merchant; this does not establish a transfer to the agreement recipient. The latest stored assessment recognises the resume with an 85% deliverable match and explains the undefined acceptance criterion. No financial or agreement mutations were performed.
+- Removed the permanent loaded-resource loading message. Missing PayPal platform configuration now explains the operator dependency and test-account distinction without disabled consent/connect controls. Direct agreements show the member-payment prerequisite before submission. Account/listing actions await their refresh. Catalogue failures support retry, search changes hide stale results, empty searches support clearing filters, and pagination cannot advance from an error. Workspace copy explains independent review and distinguishes historical failed assessment attempts from the latest result.
+- Passed: pnpm check (70 tests, lint, types, encoding, API and frontend production builds); six desktop/mobile marketplace browser tests including error/retry, filters, accessibility and private-page boundaries; Docker web build and restart; all seven services healthy; local configured-secret scan (zero matches); git diff --check.
+- One new browser assertion initially matched Next.js’s empty route-announcement alert as well as the intended error. Scoped the assertion to the actual error message; rerun passed all six tests. Type checking also caught a redundant narrowed status comparison, corrected before the successful full check.
+- Verified the rebuilt signed-in account page shows the new setup guidance and no lingering loading message. Real partner onboarding, connected-account capture/refund, live payments and cloud deployment remain unverified and unavailable until their provider configuration/release gates are completed. This review does not certify deployment readiness.
+
+### 2026-10-24 — Lighter shared green
+
+Changed the primary/success green from #215C49 to #32755E and hover from #184535 to #2B6853. Updated Clerk primary controls and the design-system reference as well. Raster logo artwork is preserved. Measured contrast: 5.466:1 on white, 5.014:1 on the page background, 4.561:1 on the subtle green surface. Local configuration presence checks confirmed checkout keys/webhook exist while partner merchant and attribution settings remain missing; no credential values were printed or altered. Passed pnpm check (70 tests, lint/types/encoding, API and web builds), Python 28 tests and Ruff. No payment behavior changed.
+
+### 2026-10-24 — Separate PayPal Platform Sandbox credentials
+
+- Wired PAYPAL_PLATFORM_CLIENT_ID, CLIENT_SECRET, MERCHANT_ID, ATTRIBUTION_ID and WEBHOOK_ID independently of legacy PAYPAL_CLIENT_ID/SECRET/WEBHOOK_ID. Connected recipient operations use only the Platform app; legacy transactions keep the original merchant adapter. No credential fallback exists. Independent token caches and signature verification prevent mixing apps. Onboarding/revocation webhooks require Platform verification; financial events still require stored-route provider readback.
+- Updated compose/Render/example configuration, readiness warnings and secret scanning. Webhook tooling supports --platform and writes only that app’s webhook entry; the restricted local relay configures both apps. Existing referral links are refreshed with a GET on the saved referral ID.
+- Real Sandbox OAuth and six-event webhook registration passed for both apps, with unsigned callbacks rejected and private routes returning 404. The original Test 3 order remained readable as COMPLETED through the legacy app. The signed-in account screen now shows an enabled consent/connect flow. No consent, merchant onboarding completion, capture or refund was performed on the user’s behalf.
+- Passed pnpm check (73 tests, lint/types/encoding, API/frontend builds), 38 real-database integration tests with identity/provider doubles, Docker API build/restart, all seven services healthy, hosted configuration isolation, zero configured-secret matches and git diff --check. Additional focused provider tests cover existing referral refresh. User completion of PayPal-hosted consent is pending; real connected-merchant payment/refund validation remains a release gate. Sandbox only.
+
+### 2026-10-24 — Repair Sandbox onboarding-reference validation
+
+The real PayPal referral ID was 112 characters and used encoded-token characters, but Pact’s retry path incorrectly enforced a 100-character identifier. Reopening onboarding therefore failed locally. The referral endpoint also returns the official api.sandbox.paypal.com alias in its self link. Updated validation to accept bounded opaque referral tokens and both explicit Sandbox API hosts, reject credentials/foreign/live URLs, preserve the whole encoded ID and URL-encode it on readback. Added regression coverage using a long padded token and the actual host alias. Unconfirmed account lookups returning PayPal 404 now produce actionable connection guidance (HTTP 409), without claiming a payment failure or marking the connection ready.
+
+Passed pnpm check (76 tests, lint/types/encoding and production builds), 38 database integration tests, nine focused provider tests after the host-alias adjustment, API production/container rebuild and restart. Real read-only PayPal checks confirmed the saved referral matches its tracking ID and Platform account, the repaired parser accepts the actual self link, and PayPal returns a trusted onboarding action link. Actual account verification remains pending: the lookup is still unconfirmed and now produces the expected connection-specific 409. No consent or financial operation was performed on the user’s behalf.
+
+### 2026-10-24 — Completed PayPal account connection and return guidance
+
+The user completed Sandbox seller consent. A fresh server-side account verification returned READY with the correct Platform grant; account connection is now verified. The saved referral already contains the expected localhost Pact return URL, but PayPal rendered its own final completion page. Added the supported return_url_description (Return to Pact) to future referral requests; PayPal controls its hosted completion page, so this does not prove automatic redirection or retroactively change the completed referral. Nine provider tests, API type checking and Docker API build passed; rebuilt backend restarted. Connected seller capture/refund remains untested against real Sandbox transactions.
+
+### 2026-10-25 — Sandbox release review and license
+
+Added the MIT License, package license metadata, and a judge/demo guide covering local setup,
+private evaluation access, AI boundaries, Sandbox financial proof and submission material.
+Fresh hosted-environment setup now copies the separate Platform configuration alongside legacy
+credentials without overwriting an existing private environment file.
+
+The initial dependency audits found vulnerable Zod, body-parser, multer and pypdf versions.
+Updated Zod to 4.6.6, body-parser to 2.4.0, multer to 2.5.0 and pypdf to 6.21.2, with regenerated
+JavaScript lockfile and matching Python pins. Both final dependency audits report no known
+vulnerabilities. This describes the audit result at review time, not a guarantee against future issues.
+
+Passed encoding, lint, type checking, 76 unit/component tests, API/web production builds, and
+format checking. All 38 isolated PostgreSQL/Redis integration tests passed with identity and
+PayPal doubles. The first run timed out during one suite's shutdown under concurrent builds;
+the complete rerun passed all five suites, including teardown. Desktop/mobile Playwright:
+54 passed. Python: 28 tests and Ruff passed. The real NVIDIA evaluation passed extraction,
+backend-resume artifact matching, supported, insufficient and conflicting evidence cases; an
+unsupported adversarial numeric estimate was rejected by the assessment validator.
+
+Real local storage/scanner checks passed immutable upload, checksum, authorized and expired
+download handling, private bucket access, clean-file scanning, EICAR rejection and size limits.
+Unavailable storage/scanner checks and hosted configuration isolation also passed. A fresh
+local pg_dump/pg_restore drill matched row counts and content fingerprints for all 30 public
+tables in a separate restore database. The original data and ignored private backup were retained.
+
+API, web and AI container rebuilds passed; the updated services restarted with preserved volumes.
+All seven long-running services are healthy. The storage/scanner checks also passed from the
+rebuilt API container. Fresh read-only PayPal calls confirmed the connected member's receiving
+permissions and the original legacy order's COMPLETED status. Final formatting, configured-secret
+scanning and diff whitespace checks passed; private environments and recovery artifacts stay ignored.
+
+No new checkout, capture, refund, adjudication or stored assessment was initiated for this review.
+The newly connected member's actual Sandbox capture/refund cycle remains an acceptance gate;
+provider-double tests and earlier legacy-merchant financial proof do not replace it. Cloud
+deployment, stable HTTPS callbacks and complete hosted acceptance remain separate work.

@@ -45,14 +45,21 @@ export const transitions: Record<string, readonly string[]> = {
 @Injectable()
 export class LifecycleService {
   constructor(@Inject(Database) readonly db: Database) {}
-  async create(user: Identity, value: unknown, key: unknown) {
+  async create(
+    user: Identity,
+    value: unknown,
+    key: unknown,
+    connectedPayee?: { userId: string; merchantId: string },
+  ) {
     const data = parse(createPactSchema, value);
     const requestId = parse(idSchema, key);
     if (data.counterpartyEmail === user.email)
       throw new BadRequestException('The other party must be a different person.');
     if (data.deadline && Date.parse(data.deadline) < Date.now())
       throw new BadRequestException('Deadline must not be in the past.');
-    const sha = createHash('sha256').update(JSON.stringify(data)).digest('hex');
+    const sha = createHash('sha256')
+      .update(JSON.stringify(connectedPayee ? { ...data, connectedPayee } : data))
+      .digest('hex');
     return this.db.transaction(async (db) => {
       await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [user.id + requestId]);
       const existing = await db.query(
@@ -63,6 +70,24 @@ export class LifecycleService {
         if (existing.rows[0].request_sha256 !== sha)
           throw new ConflictException('This request key was already used for different content.');
         return { id: existing.rows[0].id };
+      }
+      if (connectedPayee) {
+        const recipient = (
+          await db.query(
+            "SELECT u.id FROM users u JOIN paypal_accounts a ON a.user_id=u.id WHERE u.id=$1 AND a.merchant_id=$2 AND a.status='READY' AND a.checked_at>now()-interval '2 minutes' AND (($3='PARTY_B' AND u.id=$4) OR ($3='PARTY_A' AND lower(u.email)=$5)) FOR SHARE OF a",
+            [
+              connectedPayee.userId,
+              connectedPayee.merchantId,
+              data.payerRole,
+              user.id,
+              data.counterpartyEmail,
+            ],
+          )
+        ).rows[0];
+        if (!recipient)
+          throw new ConflictException(
+            'The verified receiving account changed. Refresh its PayPal connection before creating this Pact.',
+          );
       }
       const pact = await db.query(
         'INSERT INTO pacts(title,agreement,deadline,payment_condition,created_by,client_request_id,request_sha256) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id',
@@ -85,13 +110,32 @@ export class LifecycleService {
         id,
         data.counterpartyEmail,
       ]);
-      await db.query(
-        'INSERT INTO transactions(pact_id,amount_minor,currency,payer_role) VALUES($1,$2,$3,$4)',
-        [id, data.money.amountMinor, data.money.currency, data.payerRole],
-      );
+      if (connectedPayee)
+        await db.query(
+          "INSERT INTO transactions(pact_id,amount_minor,currency,payer_role,payment_route,payee_user_id,payee_merchant_id) VALUES($1,$2,$3,$4,'CONNECTED',$5,$6)",
+          [
+            id,
+            data.money.amountMinor,
+            data.money.currency,
+            data.payerRole,
+            connectedPayee.userId,
+            connectedPayee.merchantId,
+          ],
+        );
+      else
+        await db.query(
+          'INSERT INTO transactions(pact_id,amount_minor,currency,payer_role) VALUES($1,$2,$3,$4)',
+          [id, data.money.amountMinor, data.money.currency, data.payerRole],
+        );
       await audit(db, id, user.id, 'PACT_CREATED');
       for (let i = 0; i < data.commitments.length; i++)
-        await this.insertCommitment(db, id, user.id, data.commitments[i]!, i);
+        await this.insertCommitment(
+          db,
+          id,
+          connectedPayee?.userId ?? user.id,
+          data.commitments[i]!,
+          i,
+        );
       return { id };
     });
   }
@@ -163,7 +207,7 @@ export class LifecycleService {
       ).rows;
       const transaction = (
         await db.query(
-          'SELECT id,amount_minor,currency,state,payer_role,refunded_minor,order_id,capture_id FROM transactions WHERE pact_id=$1',
+          'SELECT id,amount_minor,currency,state,payer_role,refunded_minor,order_id,capture_id,payment_route FROM transactions WHERE pact_id=$1',
           [id],
         )
       ).rows[0];
@@ -231,6 +275,30 @@ export class LifecycleService {
       if (invite.accepted_by === user.id) return { id: invite.pact_id };
       if (invite.status !== 'CREATED' || invite.accepted_at)
         throw new ConflictException('Invitation is no longer active.');
+      const payment = (
+        await db.query(
+          'SELECT payer_role,payee_user_id,payment_route FROM transactions WHERE pact_id=$1',
+          [invite.pact_id],
+        )
+      ).rows[0];
+      if (
+        payment?.payment_route === 'CONNECTED' &&
+        payment.payer_role === 'PARTY_A' &&
+        payment.payee_user_id &&
+        payment.payee_user_id !== user.id
+      )
+        throw new ForbiddenException(
+          'This agreement belongs to the original verified receiving member.',
+        );
+      const listingAgreement = (
+        await db.query('SELECT seller_id,snapshot FROM marketplace_agreements WHERE pact_id=$1', [
+          invite.pact_id,
+        ])
+      ).rows[0];
+      if (listingAgreement && listingAgreement.seller_id !== user.id)
+        throw new ForbiddenException(
+          'This service agreement belongs to the original offering member.',
+        );
       await db.query("INSERT INTO parties(pact_id,user_id,role) VALUES($1,$2,'PARTY_B')", [
         invite.pact_id,
         user.id,
@@ -244,6 +312,12 @@ export class LifecycleService {
         [invite.pact_id],
       );
       await audit(db, invite.pact_id, user.id, 'PACT_ACTIVATED');
+      if (listingAgreement) {
+        const days = Number(listingAgreement.snapshot.deliveryDays);
+        if (!Number.isInteger(days) || days < 1 || days > 365)
+          throw new ConflictException('Service delivery terms are invalid.');
+        await db.query('SELECT activate_marketplace_delivery($1,$2)', [invite.pact_id, user.id]);
+      }
       return { id: invite.pact_id };
     });
   }

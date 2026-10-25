@@ -55,18 +55,27 @@ async def run():
             commitments=[
                 {
                     "id": "criterion-1",
-                    "description": (
+                    "description": case.get("description")
+                    or (
                         "Deliver a report containing all five agreed sections, "
                         "supported by a delivery log."
                     ),
                 }
             ],
-            evidence=[{"id": "evidence-1", "content": case["content"]}],
+            evidence=[
+                {"id": "evidence-1", "commitmentId": "criterion-1", "content": case["content"]}
+            ],
         )
         try:
             output = await validated_assessment(provider, request)
             citations = sum(len(item.citations) for item in output.commitments)
-            if case["name"] == "supported-text":
+            if "minimumMatch" in case:
+                passed = citations > 0 and any(
+                    item.deliverableMatch is not None
+                    and item.deliverableMatch >= case["minimumMatch"]
+                    for item in output.commitments
+                )
+            elif case["name"] == "supported-text":
                 passed = output.status in {"FULFILLED", "PARTIALLY_FULFILLED"} and citations > 0
             elif case["name"] == "conflicting":
                 passed = output.status != "FULFILLED" and citations > 0
@@ -78,6 +87,7 @@ async def run():
                     "pass": passed,
                     "status": output.status,
                     "exactCitations": sum(len(c.citations) for c in output.commitments),
+                    "deliverableMatch": [c.deliverableMatch for c in output.commitments],
                 }
             )
         except Exception as error:

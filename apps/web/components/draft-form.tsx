@@ -3,8 +3,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, LockKeyhole } from 'lucide-react';
-import { createPactSchema } from '@pact/types';
-import { AccessGate, useApi } from './session';
+import { createPactSchema, type PayPalAccountStatus } from '@pact/types';
+import { AccessGate, useApi, useResource } from './session';
 export function DraftForm() {
   return (
     <AccessGate>
@@ -14,13 +14,21 @@ export function DraftForm() {
 }
 function PersistentForm() {
   const api = useApi();
+  const paymentAccount = useResource<PayPalAccountStatus>('me/paypal');
   const router = useRouter();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState(1);
   const [key] = useState(() => crypto.randomUUID());
+  const [connectedPayment, setConnectedPayment] = useState(true);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (connectedPayment && !paymentAccount.data?.configured) {
+      setError(
+        'Member payments are unavailable until Pact finishes PayPal platform setup. Your form has been kept. Check payment connection for details.',
+      );
+      return;
+    }
     const f = new FormData(event.currentTarget);
     const amount = String(f.get('amount'));
     if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
@@ -56,11 +64,16 @@ function PersistentForm() {
     }
     setBusy(true);
     try {
-      const pact = await api<{ id: string }>('pacts', {
-        method: 'POST',
-        headers: { 'idempotency-key': key },
-        body: JSON.stringify(parsed.data),
-      });
+      const pact = await api<{ id: string }>(
+        connectedPayment ? 'services/direct-agreement/create' : 'pacts',
+        {
+          method: 'POST',
+          headers: { 'idempotency-key': key },
+          body: JSON.stringify(
+            connectedPayment ? { ...parsed.data, paymentMode: 'CONNECTED' } : parsed.data,
+          ),
+        },
+      );
       router.push(`/workspace/pacts/${pact.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Pact could not be saved.');
@@ -85,6 +98,42 @@ function PersistentForm() {
         <form className="draft-form" onSubmit={submit}>
           <fieldset>
             <legend>01 / The agreement</legend>
+            {connectedPayment && !paymentAccount.loading && !paymentAccount.data?.configured && (
+              <div className="notice" role="status">
+                <div>
+                  <p>
+                    {paymentAccount.error
+                      ? 'Payment connection status could not be checked. Your agreement fields remain available while you retry.'
+                      : 'Member payments are not available yet. Pact must finish PayPal platform setup before you can save an agreement that pays the receiving member.'}
+                  </p>
+                  <Link href="/workspace/account" className="text-link">
+                    View payment connection details
+                  </Link>
+                  {paymentAccount.error && (
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={paymentAccount.reload}
+                    >
+                      Check again
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={connectedPayment}
+                onChange={(e) => setConnectedPayment(e.target.checked)}
+              />{' '}
+              Use the receiving member’s verified PayPal account
+            </label>
+            <p className="field-help">
+              {connectedPayment
+                ? 'The receiving member must have a Pact account and finish PayPal connection first. The recipient is verified and bound before this agreement is saved. Both people still review and accept the Pact.'
+                : 'Developer Sandbox test mode: checkout pays the configured developer merchant, not the other member. Use this only for the existing Sandbox test flow.'}
+            </p>
             <label>
               Pact name
               <input

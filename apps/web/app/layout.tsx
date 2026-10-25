@@ -42,7 +42,7 @@ function IdentityBoundary({ children }: { children: React.ReactNode }) {
           formButtonPrimary: { backgroundImage: 'none', boxShadow: 'none' },
         },
         variables: {
-          colorPrimary: '#215C49',
+          colorPrimary: '#32755E',
           colorBackground: '#F7F5EF',
           colorForeground: '#1D302A',
           borderRadius: '6px',

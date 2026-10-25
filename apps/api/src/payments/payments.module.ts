@@ -17,6 +17,7 @@ import { AuthModule, AuthenticationGuard, type AuthRequest } from '../auth/auth.
 import { Database, enqueue } from '../database/database.module';
 import { ResolutionService } from './resolution.service';
 import { PayPalProvider } from './paypal.provider';
+import { PayPalAccountsModule } from '../accounts/paypal-accounts.module';
 import { ReceiptsService } from './receipts.service';
 export class DisabledPayPalAdapter {
   async executeAuthorizedAction(): Promise<never> {
@@ -113,7 +114,9 @@ class WebhookController {
     ];
     if (
       required.some((k) => typeof headers[k] !== 'string' || headers[k].length > 4096) ||
-      !(await this.paypal.verify(headers, body))
+      !(await (result.data.event_type.startsWith('MERCHANT.')
+        ? this.paypal.verifyPlatform(headers, body)
+        : this.paypal.verify(headers, body)))
     )
       throw new ForbiddenException('Webhook authenticity could not be verified.');
     const event = result.data;
@@ -122,6 +125,8 @@ class WebhookController {
       'PAYMENT.CAPTURE.COMPLETED',
       'PAYMENT.CAPTURE.REFUNDED',
       'PAYMENT.CAPTURE.DENIED',
+      'MERCHANT.ONBOARDING.COMPLETED',
+      'MERCHANT.PARTNER-CONSENT.REVOKED',
     ]);
     const resource = event.resource;
     const minimal = {
@@ -132,6 +137,8 @@ class WebhookController {
         status: resource.status,
         amount: resource.amount,
         supplementary_data: resource.supplementary_data,
+        merchant_id: resource.merchant_id,
+        tracking_id: resource.tracking_id,
       },
     };
     await this.db.transaction(async (db) => {
@@ -151,9 +158,9 @@ class WebhookController {
   }
 }
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PayPalAccountsModule],
   controllers: [PaymentsController, LegacyPaymentsController, WebhookController],
   providers: [PayPalProvider, ResolutionService, ReceiptsService],
-  exports: [PayPalProvider, ResolutionService],
+  exports: [PayPalProvider, ResolutionService, PayPalAccountsModule],
 })
 export class PaymentsModule {}

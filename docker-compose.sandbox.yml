@@ -1,4 +1,4 @@
-# Hosted, invite-only Sandbox. Use with docker-compose.yml; separate project/volumes.
+# Hosted Sandbox. Leave tester emails empty for public verified registration.
 name: pact-sandbox
 x-logging: &sandbox-logging
   driver: json-file
@@ -17,7 +17,7 @@ services:
   api:
     environment:
       NODE_ENV: production
-      PACT_TESTER_EMAILS: ${PACT_TESTER_EMAILS:?Set the invited verified tester emails}
+      PACT_TESTER_EMAILS: ${PACT_TESTER_EMAILS:-}
       WEB_ORIGIN: https://${PACT_HOST:?Set the Sandbox application hostname}
       MINIO_PUBLIC_ENDPOINT: https://${PACT_FILES_HOST:?Set the private download hostname}
     ports: !reset []

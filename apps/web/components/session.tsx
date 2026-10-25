@@ -180,6 +180,7 @@ export function useResource<T>(path: string) {
   };
 }
 export function ResourceState({
+  loading,
   error,
   retry,
 }: {
@@ -187,6 +188,7 @@ export function ResourceState({
   error: string;
   retry: () => void;
 }) {
+  if (!loading && !error) return null;
   return (
     <section className="empty-state" role={error ? 'alert' : 'status'}>
       <h2>{error ? 'The record could not load.' : 'Loading your shared record.'}</h2>

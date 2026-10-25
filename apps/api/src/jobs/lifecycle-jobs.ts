@@ -1,4 +1,6 @@
 import { staffAuthorization } from '../payments/refund-authority';
+import { PayPalAccountsService } from '../accounts/paypal-accounts.module';
+import { paymentProvider } from '../payments/paypal.provider';
 import { Injectable, Inject, ConflictException, ForbiddenException } from '@nestjs/common';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
@@ -29,6 +31,7 @@ export class LifecycleJobs {
     @Inject(EvidenceStorage) readonly storage: EvidenceStorage,
     @Inject(PayPalProvider) readonly paypal: PayPalProvider,
     @Inject(EvidenceScanner) readonly scanner: EvidenceScanner,
+    @Inject(PayPalAccountsService) readonly accounts: PayPalAccountsService,
   ) {}
   async process(kind: string, id: string) {
     if (kind === 'EVIDENCE') return this.evidence(id);
@@ -278,10 +281,16 @@ export class LifecycleJobs {
     if (!claim) return;
     const { op, tx, p } = claim;
     try {
+      const paypal = paymentProvider(this.paypal, tx);
+      if (tx.payment_route === 'CONNECTED' && op.operation !== 'REFUND') {
+        const merchant = await this.accounts.requireReady(tx.payee_user_id);
+        if (merchant !== tx.payee_merchant_id)
+          throw new ConflictException('PayPal recipient changed.');
+      }
       let response: Record<string, unknown>;
       let externalId: string;
       if (op.operation === 'ORDER') {
-        const result = await this.paypal.createOrder(
+        const result = await paypal.createOrder(
           tx.id,
           tx.amount_minor,
           tx.currency,
@@ -294,17 +303,17 @@ export class LifecycleJobs {
         response = { orderId: result.id, approvalUrl: href };
         externalId = result.id;
       } else if (op.operation === 'CAPTURE') {
-        const order = await this.paypal.getOrder(tx.order_id);
+        const order = await paypal.getOrder(tx.order_id);
         validateCaptureOrder(order, tx);
         if (order.status !== 'APPROVED' && order.status !== 'COMPLETED')
           throw new ConflictException('Approve the PayPal order before capture');
         let result = order;
         if (order.status !== 'COMPLETED') {
-          await this.paypal.capture(tx.order_id, op.request_id);
+          await paypal.capture(tx.order_id, op.request_id);
           // Read the full order after the POST. Minimal capture representations may omit unit amounts.
           // A failed readback remains uncertain and must never trigger another financial POST.
           try {
-            result = await this.paypal.getOrder(tx.order_id);
+            result = await paypal.getOrder(tx.order_id);
             validateCaptureOrder(result, tx);
           } catch (error) {
             throw new ProviderError(true, error instanceof ProviderError ? error.diagnostic : {});
@@ -316,11 +325,11 @@ export class LifecycleJobs {
         response = { captureId: capture.id };
         externalId = capture.id;
       } else {
-        const capture = await this.paypal.getCapture(tx.capture_id);
+        const capture = await paypal.getCapture(tx.capture_id);
         if (capture.id !== tx.capture_id || capture.status !== 'COMPLETED')
           throw new ConflictException('Capture requires reconciliation');
         confirmAmount(capture.amount, tx.amount_minor, tx.currency);
-        const result = await this.paypal.refund(
+        const result = await paypal.refund(
           tx.capture_id,
           op.amount_minor,
           tx.currency,
@@ -374,6 +383,38 @@ export class LifecycleJobs {
       )
     ).rows[0];
     if (!event) return;
+    if (
+      ['MERCHANT.ONBOARDING.COMPLETED', 'MERCHANT.PARTNER-CONSENT.REVOKED'].includes(
+        event.event_type,
+      )
+    ) {
+      const resource = z
+        .object({
+          merchant_id: z.string().max(100).optional(),
+          tracking_id: z.string().max(100).optional(),
+          id: z.string().max(100).optional(),
+        })
+        .parse(event.payload.resource);
+      const accounts = (
+        await this.db.query(
+          'SELECT user_id FROM paypal_accounts WHERE merchant_id=$1 OR tracking_id::text=$2',
+          [resource.merchant_id ?? resource.id ?? '', resource.tracking_id ?? ''],
+        )
+      ).rows;
+      for (const account of accounts) {
+        if (event.event_type === 'MERCHANT.PARTNER-CONSENT.REVOKED')
+          await this.db.query(
+            "UPDATE paypal_accounts SET status='REVOKED',checked_at=now(),updated_at=now() WHERE user_id=$1",
+            [account.user_id],
+          );
+        else await this.accounts.refresh(account.user_id);
+      }
+      await this.db.query(
+        "UPDATE paypal_webhook_events SET processed_at=now(),processing_status='PROCESSED' WHERE id=$1",
+        [id],
+      );
+      return;
+    }
     const payload = event.payload as {
       resource: {
         id?: string;
@@ -391,7 +432,15 @@ export class LifecycleJobs {
         await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [resource.id])
       ).rows[0];
       if (tx) {
-        const order = await this.paypal.getOrder(resource.id);
+        const order = await paymentProvider(this.paypal, tx).getOrder(resource.id);
+        validateCaptureOrder(order, {
+          id: tx.id,
+          order_id: tx.order_id,
+          amount_minor: tx.amount_minor,
+          currency: tx.currency,
+          payment_route: tx.payment_route,
+          payee_merchant_id: tx.payee_merchant_id,
+        });
         if (order.status !== 'APPROVED' && order.status !== 'COMPLETED')
           throw new Error('Order not approved');
         const unit = order.purchase_units?.find((u) => u.custom_id === tx.id);
@@ -401,7 +450,14 @@ export class LifecycleJobs {
       }
     }
     if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED' && resource.id) {
-      const capture = await this.paypal.getCapture(resource.id);
+      const hint = resource.supplementary_data?.related_ids?.order_id;
+      const linked = hint
+        ? (await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [hint])).rows[0]
+        : (await this.db.query('SELECT * FROM transactions WHERE capture_id=$1', [resource.id]))
+            .rows[0];
+      const capture = await (
+        linked ? paymentProvider(this.paypal, linked) : this.paypal
+      ).getCapture(resource.id);
       if (capture.status !== 'COMPLETED') throw new Error('Capture not confirmed');
       const orderId =
         capture.supplementary_data?.related_ids?.order_id ??
@@ -410,7 +466,15 @@ export class LifecycleJobs {
         const tx = (await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [orderId]))
           .rows[0];
         if (tx) {
-          const order = await this.paypal.getOrder(orderId);
+          const order = await paymentProvider(this.paypal, tx).getOrder(orderId);
+          validateCaptureOrder(order, {
+            id: tx.id,
+            order_id: tx.order_id,
+            amount_minor: tx.amount_minor,
+            currency: tx.currency,
+            payment_route: tx.payment_route,
+            payee_merchant_id: tx.payee_merchant_id,
+          });
           if (
             !order.purchase_units?.some(
               (u) =>
@@ -426,14 +490,29 @@ export class LifecycleJobs {
       }
     }
     if (event.event_type === 'PAYMENT.CAPTURE.DENIED' && resource.id) {
-      const capture = await this.paypal.getCapture(resource.id);
+      const hint = resource.supplementary_data?.related_ids?.order_id;
+      const linked = hint
+        ? (await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [hint])).rows[0]
+        : (await this.db.query('SELECT * FROM transactions WHERE capture_id=$1', [resource.id]))
+            .rows[0];
+      const capture = await (
+        linked ? paymentProvider(this.paypal, linked) : this.paypal
+      ).getCapture(resource.id);
       const orderId = capture.supplementary_data?.related_ids?.order_id;
       if (capture.id !== resource.id || capture.status !== 'DECLINED' || !orderId)
         throw new Error('Declined capture requires authoritative readback');
       const tx = (await this.db.query('SELECT * FROM transactions WHERE order_id=$1', [orderId]))
         .rows[0];
       if (tx) {
-        const order = await this.paypal.getOrder(orderId);
+        const order = await paymentProvider(this.paypal, tx).getOrder(orderId);
+        validateCaptureOrder(order, {
+          id: tx.id,
+          order_id: tx.order_id,
+          amount_minor: tx.amount_minor,
+          currency: tx.currency,
+          payment_route: tx.payment_route,
+          payee_merchant_id: tx.payee_merchant_id,
+        });
         if (
           order.id !== orderId ||
           !order.purchase_units?.some(
@@ -450,13 +529,13 @@ export class LifecycleJobs {
       const related = resource.supplementary_data?.related_ids?.capture_id ?? resource.id;
       const op = (
         await this.db.query(
-          "SELECT op.*,tx.pact_id,tx.capture_id,tx.currency FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id WHERE op.operation='REFUND' AND (op.paypal_id=$1 OR tx.capture_id=$2) AND op.status IN ('PROVIDER_ACCEPTED','CONFIRMED','EXECUTING','NEEDS_RECONCILIATION')",
+          "SELECT op.*,tx.pact_id,tx.capture_id,tx.currency,tx.payment_route,tx.payee_merchant_id FROM paypal_transactions op JOIN transactions tx ON tx.id=op.transaction_id WHERE op.operation='REFUND' AND (op.paypal_id=$1 OR tx.capture_id=$2) AND op.status IN ('PROVIDER_ACCEPTED','CONFIRMED','EXECUTING','NEEDS_RECONCILIATION')",
           [resource.id, related],
         )
       ).rows[0];
       if (op) {
         if (!op.paypal_id) throw new Error('Refund confirmation is still pending');
-        const refund = await this.paypal.getRefund(op.paypal_id);
+        const refund = await paymentProvider(this.paypal, op).getRefund(op.paypal_id);
         if (refund.status !== 'COMPLETED') throw new Error('Refund not completed');
         confirmAmount(refund.amount, op.amount_minor, op.currency);
         if (
@@ -479,7 +558,7 @@ export class LifecycleJobs {
           await this.db.query('SELECT * FROM transactions WHERE capture_id=$1', [related])
         ).rows[0];
         if (tx) {
-          const capture = await this.paypal.getCapture(tx.capture_id);
+          const capture = await paymentProvider(this.paypal, tx).getCapture(tx.capture_id);
           if (!['REFUNDED', 'PARTIALLY_REFUNDED'].includes(capture.status))
             throw new Error('External refund not confirmed');
           transactionId = tx.id;
@@ -522,6 +601,12 @@ export class LifecycleJobs {
           await db.query(
             "UPDATE paypal_transactions SET status='CONFIRMED' WHERE transaction_id=$1 AND operation='CAPTURE'",
             [tx.id],
+          );
+          // A verified completed capture also proves its exact parent order exists.
+          // Do not leave review blocked when the separate approval webhook was delayed or lost.
+          await db.query(
+            "UPDATE paypal_transactions SET status='CONFIRMED',failure_code=NULL,updated_at=now() WHERE transaction_id=$1 AND operation='ORDER' AND paypal_id=$2 AND status IN ('EXECUTING','PROVIDER_ACCEPTED','NEEDS_RECONCILIATION')",
+            [tx.id, tx.order_id],
           );
           await audit(db, p.id, null, 'PAYMENT_CAPTURED', { transactionId: tx.id });
         }

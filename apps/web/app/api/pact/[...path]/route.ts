@@ -4,18 +4,21 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
   const { path } = await params;
   const joined = path.join('/');
   if (
-    !/^(?:pacts|me|activity|invitations|capabilities|support|staff|sellers)(?:\/[a-zA-Z0-9_-]+)*$/.test(
+    !/^(?:pacts|me|activity|invitations|capabilities|support|staff|sellers|marketplace|services)(?:\/[a-zA-Z0-9_-]+)*$/.test(
       joined,
     )
   )
     return Response.json({ error: { message: 'Route not found.' } }, { status: 404 });
   const token = request.headers.get('authorization');
-  if (!token?.startsWith('Bearer ') || token.length > 8192)
+  const publicCatalogue =
+    request.method === 'GET' && /^marketplace(?:\/[a-f0-9-]{36})?$/.test(joined);
+  if (!publicCatalogue && (!token?.startsWith('Bearer ') || token.length > 8192))
     return Response.json(
       { error: { message: 'A verified session is required.' } },
       { status: 403 },
     );
-  const headers = new Headers({ authorization: token });
+  const headers = new Headers();
+  if (token?.startsWith('Bearer ') && token.length <= 8192) headers.set('authorization', token);
   const contentType = request.headers.get('content-type');
   if (contentType) headers.set('content-type', contentType);
   const key = request.headers.get('idempotency-key');
@@ -43,7 +46,7 @@ async function proxy(request: NextRequest, { params }: { params: Promise<{ path:
   }
   try {
     const response = await fetch(
-      `${process.env.API_ORIGIN || 'http://127.0.0.1:4000'}/v1/${joined}`,
+      `${process.env.API_ORIGIN || 'http://127.0.0.1:4000'}/v1/${joined}${publicCatalogue ? request.nextUrl.search : ''}`,
       {
         method: request.method,
         headers,

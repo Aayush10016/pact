@@ -2,6 +2,14 @@
 
 **Make the commitment. Prove the work. Resolve fairly.**
 
+Pact is a working PayPal Sandbox and AI prototype for agreements between people.
+One verified account can buy and offer services, track private evidence, request a cited AI
+assessment, and seek an independent human review. AI advises; people authorize; PayPal
+confirms payment results. Sandbox payments use test funds, and live-money endpoints are disabled.
+
+Start with the [judge and demo guide](docs/HACKATHON_DEMO.md) and
+[marketplace and account connection guide](docs/MARKETPLACE.md).
+
 Phase 3 preserves the approved interface and adds free local private storage, malware scanning,
 OCR, evidence-grounded NVIDIA reasoning, operator reconciliation and recovery tooling. It is a
 development product; real Sandbox capture and a full refund are now confirmed, with private
@@ -89,3 +97,9 @@ Python: `apps/ai/.venv/Scripts/python -m ruff check apps/ai` and
 See [Sandbox deployment and acceptance gates](docs/SANDBOX_DEPLOYMENT.md). The overlay uses separate volumes, HTTPS, private service ports and Sandbox-only payments. Run `pnpm sandbox:webhooks` to reconnect the restricted callback relay for local testing; hosted testing uses its own stable HTTPS callback.
 
 For the user-selected split hosting route, see [Render / Supabase / Vercel preparation](docs/RENDER_SUPABASE_VERCEL.md), including unresolved free scanner hosting and actual cloud acceptance gates.
+
+## License
+
+Pact's original source code is available under the [MIT License](LICENSE).
+Dependencies retain their own licenses. PayPal and other third-party names and logos remain
+their owners' property; the project does not claim their endorsement.

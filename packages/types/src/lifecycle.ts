@@ -109,6 +109,7 @@ export interface PactRecord {
     payer_role: string;
     refunded_minor: string;
     confirmation_pending?: boolean;
+    payment_route?: 'LEGACY' | 'CONNECTED';
   };
   commitments: Array<{
     id: string;
