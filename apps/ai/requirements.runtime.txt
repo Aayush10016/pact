@@ -1,0 +1,8 @@
+# Production entrypoints only; constrain every dependency to the reviewed development lock.
+-c requirements.lock.txt
+fastapi==0.142.2
+uvicorn==0.40.0
+pydantic==2.12.5
+httpx==0.28.1
+pypdf==6.21.2
+pillow==13.0.0

@@ -10,6 +10,8 @@ confirms payment results. Sandbox payments use test funds, and live-money endpoi
 Start with the [judge and demo guide](docs/HACKATHON_DEMO.md) and
 [marketplace and account connection guide](docs/MARKETPLACE.md).
 
+Current hosting decision and constraints: [Sandbox deployment plan](docs/DEPLOYMENT_PLAN.md).
+
 Phase 3 preserves the approved interface and adds free local private storage, malware scanning,
 OCR, evidence-grounded NVIDIA reasoning, operator reconciliation and recovery tooling. It is a
 development product; real Sandbox capture and a full refund are now confirmed, with private

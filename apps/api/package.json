@@ -2,6 +2,9 @@
   "name": "@pact/api",
   "version": "0.1.0",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "node --env-file-if-exists=../../.env --watch dist/main.js",
     "build": "tsc -p tsconfig.json",

@@ -267,3 +267,51 @@ No new checkout, capture, refund, adjudication or stored assessment was initiate
 The newly connected member's actual Sandbox capture/refund cycle remains an acceptance gate;
 provider-double tests and earlier legacy-merchant financial proof do not replace it. Cloud
 deployment, stable HTTPS callbacks and complete hosted acceptance remain separate work.
+
+### 2026-10-29 — Production image optimization
+
+Prepared separate Node build/runtime stages, a production-only API dependency deployment,
+Docker-only Next.js standalone output with copied static/public assets, and a constrained Python
+runtime requirements file excluding development tools. Normal local/Vercel frontend configuration
+is retained. No UI, provider credentials, migrations, financial rules, scanning policy or worker
+concurrency was changed. The deployment decision is recorded in docs/DEPLOYMENT_PLAN.md.
+
+Passed Ruff and all 28 Python tests. A fresh isolated Python runtime install from the new requirements
+file loaded the AI/extraction modules and runtime dependencies with pytest/Ruff absent. Shared
+packages and the API compiled successfully when checked serially with a smaller build heap.
+Frontend type checking also passed serially. Format, configured-secret scanning and whitespace
+checks passed.
+
+The first checks failed from Windows memory exhaustion: Docker/WSL reported 0x800705af (paging
+file too small), and constrained Node builds reached their heap limit. After the user freed memory,
+Docker started and the complete pnpm check passed: encoding, lint, all type checks, 76 unit/component
+tests and API/frontend production builds. All 38 PostgreSQL/Redis integration tests and 54 desktop/
+mobile Playwright tests passed; the browser suite exercised the actual standalone web container.
+
+All three production image builds passed. The first API runtime probe caught pnpm legacy workspace
+links pointing outside the deployed tree. Materialized only the two known compiled workspace
+packages, rebuilt, and verified the full AppModule, root-level pg resolution, all ten migration files,
+absence of TypeScript/Vitest/Playwright and private .env files. All 162 installed third-party packages
+matched versions in the reviewed workspace lock. All four production BullMQ workers initialized,
+connected and shut down against the isolated test PostgreSQL database and Redis DB 14 with payment
+credentials disabled. Main-record API smoke checks used a temporary WORKERS_ENABLED=false override
+to avoid draining existing jobs; the normal configuration is restored to its stopped state afterward.
+
+The production AI image passed pip check, module imports with pytest/Ruff absent, and actual OCR
+and text extraction on synthetic evidence. Seven local services were healthy; web/API/AI readiness,
+the public catalogue and logo returned 200, while anonymous private APIs returned 403. Real MinIO/
+ClamAV checks passed upload/checksum/immutable-write behavior, signed/expired downloads, private
+bucket enforcement, clean scanning, EICAR detection and size rejection.
+
+Docker-reported uncompressed image sizes (decimal MB, not running RAM or additive disk usage):
+
+| Image |   Before |  After | Reduction |
+| ----- | -------: | -----: | --------: |
+| API   | 1,506 MB | 313 MB |     79.2% |
+| Web   | 1,677 MB | 301 MB |     82.0% |
+| AI    |   465 MB | 379 MB |     18.4% |
+
+The baseline IDs/sizes and exact byte counts are retained in ignored .recovery-local artifacts.
+No new checkout, capture, refund, live AI assessment or cloud deployment was initiated. Existing
+database/storage volumes and applied migrations were preserved. This verifies local packaging and
+regressions, not hosted acceptance, native ARM compatibility or an uninterrupted free hosting plan.
