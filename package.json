@@ -1,6 +1,7 @@
 {
   "name": "pact",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@11.20.0",
   "engines": {
@@ -17,10 +18,13 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
-    "check": "pnpm prepare:packages && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm encoding:check && pnpm prepare:packages && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "encoding:check": "node scripts/check-encoding.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:bootstrap": "node scripts/bootstrap-local.mjs",
+    "sandbox:webhooks": "node scripts/sandbox-webhooks.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.11.1",
@@ -37,6 +41,6 @@
     "prettier": "3.8.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.48.1",
-    "vitest": "4.0.18"
+    "vitest": "4.1.12"
   }
 }

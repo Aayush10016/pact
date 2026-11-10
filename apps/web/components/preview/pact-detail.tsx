@@ -1,0 +1,265 @@
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import {
+  ArrowLeft,
+  Check,
+  Clock3,
+  FileText,
+  LockKeyhole,
+  ArrowUpRight,
+  CircleHelp,
+} from 'lucide-react';
+import type { DemoPact } from '@pact/types';
+import { formatMoney, statusLabels } from '@pact/shared';
+const sections = ['Commitments', 'Evidence', 'Assessment', 'Resolution'] as const;
+export function PactDetail({ pact }: { pact: DemoPact }) {
+  const [section, setSection] = useState<(typeof sections)[number]>('Commitments');
+  const isBrand = pact.id === 'brand-identity';
+  const commitments = isBrand
+    ? [
+        'Discovery & creative direction',
+        'Visual identity & final assets',
+        'Brand guidelines & handover',
+      ]
+    : pact.id === 'studio-website'
+      ? [
+          'Sitemap & design direction',
+          'Responsive homepage',
+          'Four supporting pages',
+          'Deployment & handover',
+        ]
+      : ['Creative direction & shot list', 'Final edited collection'];
+  return (
+    <>
+      <Link href="/preview" className="text-link breadcrumb">
+        <ArrowLeft size={16} />
+        Your pacts
+      </Link>
+      <div className="detail-heading">
+        <div>
+          <p className="eyebrow">{pact.category.toUpperCase()} / SAMPLE PACT</p>
+          <h1>{pact.title}</h1>
+          <div className="parties">
+            <span className="avatar">JC</span>
+            <span>Jamie Cooper</span>
+            <span className="party-connector">↔</span>
+            <span className="avatar clay">{pact.initials}</span>
+            <span>{pact.otherParty}</span>
+          </div>
+        </div>
+        <div>
+          <span className={`badge ${pact.status === 'DISPUTED' ? 'warning' : ''}`}>
+            {statusLabels[pact.status]}
+          </span>
+          <p className="mono detail-money">{formatMoney(pact.money)}</p>
+          <p className="muted">Agreed amount · {pact.money.currency}</p>
+        </div>
+      </div>
+      <div className="detail-layout">
+        <div>
+          <nav className="detail-tabs" aria-label="Pact sections">
+            {sections.map((s) => (
+              <button
+                key={s}
+                aria-current={s === section ? 'page' : undefined}
+                onClick={() => setSection(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </nav>
+          <section className="detail-content" aria-live="polite">
+            {section === 'Commitments' && (
+              <>
+                <p className="eyebrow">WHAT WAS PROMISED</p>
+                <h2>A shared definition of done.</h2>
+                <p className="muted">
+                  {isBrand
+                    ? 'Create a distinctive brand identity for Fieldwork, with production-ready assets and a clear guide for using them.'
+                    : `Complete the agreed ${pact.category.toLowerCase()} deliverables, ready for review by both parties.`}
+                </p>
+                <div className="commitment-list">
+                  {commitments.map((title, i) => (
+                    <article key={title}>
+                      <span className={`step-marker ${i < pact.completedMilestones ? 'done' : ''}`}>
+                        {i < pact.completedMilestones ? (
+                          <Check size={16} />
+                        ) : (
+                          String(i + 1).padStart(2, '0')
+                        )}
+                      </span>
+                      <div>
+                        <h3>{title}</h3>
+                        <p>
+                          {i < pact.completedMilestones
+                            ? 'Delivery recorded in the sample timeline.'
+                            : 'Deliverables and acceptance criteria to be confirmed.'}
+                        </p>
+                      </div>
+                      <span className={`badge ${i < pact.completedMilestones ? '' : 'neutral'}`}>
+                        {i < pact.completedMilestones ? 'Delivered' : 'Upcoming'}
+                      </span>
+                    </article>
+                  ))}
+                </div>
+                <div className="notice">
+                  <LockKeyhole size={19} />
+                  <div>
+                    <strong>Payment follows authorization.</strong>
+                    <p>
+                      This preview has no connected payment. Real payment states will be confirmed
+                      by verified PayPal webhooks.
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+            {section === 'Evidence' && (
+              <>
+                <p className="eyebrow">WHAT HAPPENED</p>
+                <h2>A record that stays connected.</h2>
+                <p className="muted">
+                  Illustrative evidence, in chronological order. Attachments are not stored in this
+                  preview.
+                </p>
+                <div className="evidence-list">
+                  {[
+                    'Agreement & project brief',
+                    'First delivery & review notes',
+                    'Final delivery package',
+                  ].map((title, i) => (
+                    <article key={title}>
+                      <FileText size={23} />
+                      <div>
+                        <span className="mono">
+                          EV / 00{i + 1} · OCT {2 + i * 2}, 2026
+                        </span>
+                        <h3>{title}</h3>
+                        <p>
+                          Supports: {commitments[Math.min(i, commitments.length - 1)]}. Records the
+                          scope or delivery for both parties to review.
+                        </p>
+                      </div>
+                      <span className="badge neutral">Sample</span>
+                    </article>
+                  ))}
+                </div>
+                <button className="button secondary" disabled>
+                  Evidence uploads available in Phase 2
+                </button>
+              </>
+            )}
+            {section === 'Assessment' && (
+              <>
+                <p className="eyebrow">WHAT THE EVIDENCE SHOWS</p>
+                <h2>An advisor. A clearer picture.</h2>
+                <div className="assessment-empty">
+                  <CircleHelp size={32} strokeWidth={1.3} />
+                  <h3>No assessment generated.</h3>
+                  <p>
+                    Reasoning will examine the commitments and cite the exact evidence it uses.
+                    Missing information and uncertainty will remain visible.
+                  </p>
+                  <dl>
+                    <div>
+                      <dt>Provider</dt>
+                      <dd>NVIDIA NIM / Nemotron planned</dd>
+                    </div>
+                    <div>
+                      <dt>Confidence</dt>
+                      <dd>Unavailable until assessed</dd>
+                    </div>
+                    <div>
+                      <dt>Financial authority</dt>
+                      <dd>None. People authorize.</dd>
+                    </div>
+                  </dl>
+                  <button className="button secondary" disabled>
+                    Reasoning is not enabled yet
+                  </button>
+                </div>
+              </>
+            )}
+            {section === 'Resolution' && (
+              <>
+                <p className="eyebrow">A FAIR OUTCOME</p>
+                <h2>Both sides get a voice.</h2>
+                <div className="positions">
+                  <article>
+                    <span className="mini-label">BUYER’S POSITION</span>
+                    <h3>Jamie Cooper</h3>
+                    <p>No claim recorded in this preview.</p>
+                  </article>
+                  <article>
+                    <span className="mini-label">SELLER’S POSITION</span>
+                    <h3>{pact.otherParty}</h3>
+                    <p>No claim recorded in this preview.</p>
+                  </article>
+                </div>
+                <div className="notice">
+                  <LockKeyhole size={20} />
+                  <div>
+                    <strong>Every proposal requires human approval.</strong>
+                    <p>
+                      There is no resolution to authorize. AI output cannot execute a payment,
+                      refund, or release of funds.
+                    </p>
+                  </div>
+                </div>
+                <button className="button" disabled>
+                  Financial actions unavailable
+                </button>
+              </>
+            )}
+          </section>
+        </div>
+        <aside className="record-aside">
+          <p className="eyebrow">THE SHARED RECORD</p>
+          <h2>
+            From promise
+            <br />
+            to outcome.
+          </h2>
+          <ol className="record-timeline">
+            <li>
+              <span className="timeline-dot done" />
+              <div>
+                <strong>Agreement defined</strong>
+                <p>Oct 2, 2026 · Sample</p>
+              </div>
+            </li>
+            <li>
+              <span className="timeline-dot done" />
+              <div>
+                <strong>Work in progress</strong>
+                <p>Milestones recorded</p>
+              </div>
+            </li>
+            <li>
+              <span className="timeline-dot current" />
+              <div>
+                <strong>{pact.nextAction}</strong>
+                <p>Next step</p>
+              </div>
+            </li>
+            <li>
+              <span className="timeline-dot" />
+              <div>
+                <strong>Confirm the outcome</strong>
+                <p>Human decision required</p>
+              </div>
+            </li>
+          </ol>
+          <div className="aside-footer">
+            <Clock3 size={16} />
+            <p>A durable audit trail will record every authorized step.</p>
+          </div>
+          <Link href="/about" className="text-link">
+            Understand the foundation <ArrowUpRight size={15} />
+          </Link>
+        </aside>
+      </div>
+    </>
+  );
+}

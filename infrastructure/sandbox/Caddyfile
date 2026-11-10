@@ -1,0 +1,44 @@
+{$PACT_HOST} {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	@webhook {
+		method POST
+		path /v1/webhooks/paypal
+	}
+	handle @webhook {
+		request_body {
+			max_size 256KB
+		}
+		reverse_proxy api:4000
+	}
+	# Never publish arbitrary backend routes, docs, or dependency health data.
+	handle /v1/* {
+		respond 404
+	}
+	handle {
+		request_body {
+			max_size 9MB
+		}
+		reverse_proxy web:3000
+	}
+}
+{$PACT_FILES_HOST} {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Cache-Control "private, no-store"
+	}
+	# S3 signatures remain mandatory; preserve Host for signature verification.
+	@download {
+		method GET HEAD
+		path /{$EVIDENCE_BUCKET}/*
+	}
+	handle @download {
+		reverse_proxy minio:9000
+	}
+	handle {
+		respond 403
+	}
+}

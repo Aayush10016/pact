@@ -1,14 +1,5 @@
 import Link from 'next/link';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Check,
-  FileText,
-  LockKeyhole,
-  GitBranch,
-  Scale,
-  CircleCheck,
-} from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, FileText, LockKeyhole, CircleCheck } from 'lucide-react';
 import { Logo } from '../components/logo';
 export default function Home() {
   return (
@@ -18,6 +9,7 @@ export default function Home() {
           <Logo />
         </Link>
         <nav aria-label="Main navigation">
+          <Link href="/marketplace">Find services</Link>
           <a href="#how-it-works">How it works</a>
           <a href="#built-for-trust">Built for trust</a>
         </nav>
@@ -49,6 +41,9 @@ export default function Home() {
               <a className="text-link" href="#how-it-works">
                 See how it works <span>↗</span>
               </a>
+              <Link className="text-link" href="/marketplace">
+                Find a service <ArrowUpRight size={16} />
+              </Link>
             </div>
             <p className="quiet-caption">
               <LockKeyhole size={14} />
@@ -143,29 +138,19 @@ export default function Home() {
           <div className="workflow-grid">
             {[
               {
-                n: '01',
-                icon: GitBranch,
                 title: 'Make it clear.',
                 body: 'Define the deliverables, milestones, and payment conditions. Both sides know what good looks like.',
               },
               {
-                n: '02',
-                icon: FileText,
                 title: 'Keep the record.',
                 body: 'Connect each delivery, message, and document to the promise it supports. Nothing lost in the thread.',
               },
               {
-                n: '03',
-                icon: Scale,
                 title: 'Find a fair outcome.',
                 body: 'See what the evidence supports. Review a recommendation. People make the final decision.',
               },
             ].map((item) => (
-              <article key={item.n}>
-                <div className="workflow-number">
-                  <span className="mono">{item.n}</span>
-                  <item.icon size={24} strokeWidth={1.4} />
-                </div>
+              <article key={item.title}>
                 <h3>{item.title}</h3>
                 <p>{item.body}</p>
               </article>

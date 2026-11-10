@@ -1,0 +1,16 @@
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='pact_runtime') THEN CREATE ROLE pact_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$;
+GRANT USAGE ON SCHEMA public TO pact_runtime;
+GRANT SELECT,INSERT ON users,pacts,parties,pact_invitations,commitments,milestones,transactions,evidence,evidence_versions,claims,ai_analyses,resolutions,approvals,paypal_transactions,paypal_webhook_events,audit_events,notifications,outbox_jobs,provider_attempts,evidence_upload_requests TO pact_runtime;
+GRANT UPDATE(email,display_name) ON users TO pact_runtime;
+GRANT UPDATE(status,version,updated_at) ON pacts TO pact_runtime;
+GRANT UPDATE(accepted_by,accepted_at) ON pact_invitations TO pact_runtime;
+GRANT UPDATE(status,updated_at) ON commitments,milestones TO pact_runtime;
+GRANT UPDATE(state,version,order_id,capture_id,refunded_minor,updated_at) ON transactions TO pact_runtime;
+GRANT UPDATE(state,extracted_text,failure_code,confirmed_at,updated_at) ON evidence_versions TO pact_runtime;
+GRANT UPDATE(state,assessment,model,failure_code,updated_at) ON ai_analyses TO pact_runtime;
+GRANT UPDATE(retired_at) ON resolutions TO pact_runtime;
+GRANT UPDATE(status,response,paypal_id,updated_at,failure_code) ON paypal_transactions TO pact_runtime;
+GRANT UPDATE(processed_at,processing_status,failure_code) ON paypal_webhook_events TO pact_runtime;
+GRANT UPDATE(published_at) ON outbox_jobs TO pact_runtime;
+GRANT UPDATE(attempts,updated_at) ON provider_attempts TO pact_runtime;
+GRANT UPDATE(read_at) ON notifications TO pact_runtime;

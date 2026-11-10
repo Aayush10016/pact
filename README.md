@@ -2,108 +2,106 @@
 
 **Make the commitment. Prove the work. Resolve fairly.**
 
-Pact is a trust layer for transactions between people who don't know each other.
-Commitments -> evidence -> fulfillment -> payment -> resolution.
+Pact is a working PayPal Sandbox and AI prototype for agreements between people.
+One verified account can buy and offer services, track private evidence, request a cited AI
+assessment, and seek an independent human review. AI advises; people authorize; PayPal
+confirms payment results. Sandbox payments use test funds, and live-money endpoints are disabled.
 
-This repository is the **Phase 1 foundation**, not a public financial product. It contains a real
-Next.js application, NestJS REST service, separate FastAPI skeleton, relational migration,
-Redis/BullMQ contracts, local Docker environment, CI, and a shared visual system.
+Start with the [judge and demo guide](docs/HACKATHON_DEMO.md) and
+[marketplace and account connection guide](docs/MARKETPLACE.md).
 
-## Get running
+Current hosting decision and constraints: [Sandbox deployment plan](docs/DEPLOYMENT_PLAN.md).
 
-Requirements: Node **24.18.0** (>=24.15 <25), pnpm **11.20.0**, Python **3.11+**, Docker Desktop
-with its Linux engine running. Framework packages are pinned and `pnpm-lock.yaml` is committed.
+Phase 3 preserves the approved interface and adds free local private storage, malware scanning,
+OCR, evidence-grounded NVIDIA reasoning, operator reconciliation and recovery tooling. It is a
+development product; real Sandbox capture and a full refund are now confirmed, with private
+payment/refund receipts. Production readiness and real ambiguous-operation reconciliation
+remain separate gates. See
+[Phase 3 setup, actual provider proof and blockers](docs/PHASE_3.md).
+
+## Run locally
+
+Node 24.18.0, pnpm 11.20.0, Python 3.11+, and Docker Desktop are required.
+Run `node scripts/setup-local-env.mjs` to fill missing local credentials with random values. Existing values and provider credentials are preserved. Existing database volumes require password rotation in PostgreSQL itself; changing `.env` alone does not change an initialized database.
 
 ```powershell
-Copy-Item .env.example .env
 pnpm install --frozen-lockfile
 pnpm prepare:packages
-pnpm --filter @pact/api build
-docker compose up -d postgres redis
-pnpm db:migrate
+docker compose up -d --build postgres redis minio clamav ai
+pnpm db:bootstrap
+node scripts/minio-bootstrap.mjs
 python -m venv apps/ai/.venv
 apps/ai/.venv/Scripts/python -m pip install -r apps/ai/requirements.lock.txt
+pnpm build
 ```
 
-Run in separate terminals from the repository root:
+Run `pnpm dev:web` and `pnpm dev:api` separately. API scripts load the root environment.
+For the AI service, from repository root, load the same environment without printing secrets:
 
 ```powershell
-pnpm dev:web
-pnpm dev:api
+node --env-file=.env -e "require('node:child_process').spawn('apps/ai/.venv/Scripts/python',['-m','uvicorn','pact_ai.main:app','--app-dir','apps/ai','--host','127.0.0.1','--port','8000'],{stdio:'inherit',env:process.env})"
 ```
 
-Run the AI service from `apps/ai`:
+Web: http://localhost:3000, API readiness: http://localhost:4000/ready, AI: http://localhost:8000/health.
+Use the exact WEB_ORIGIN for Clerk session authorized-party validation.
+All services: `docker compose up --build --wait`. Existing database volumes are preserved.
+PostgreSQL host port is 55432. Migration credentials own schema changes; `pact_runtime`
+has restricted column-level writes and cannot alter audit/approval records or evidence content.
+Local role provisioning refuses production mode and databases other than explicitly named development databases.
 
-```powershell
-.venv/Scripts/python -m uvicorn pact_ai.main:app --host 127.0.0.1 --port 8000
-```
+## Private workspace
 
-Web: http://localhost:3000 Â· API: http://localhost:4000/health Â·
-Infrastructure readiness: http://localhost:4000/ready Â· AI docs: http://localhost:8000/docs.
-The API watch script watches compiled output; rebuild the API after source edits.
-On macOS/Linux use `.venv/bin/python` instead of `Scripts/python`.
+- Verified Clerk identity; email-matched invitation and agreement review before acceptance.
+- Persistent Pacts, commitments, optional milestones, party-neutral payer selection, integer money.
+- Private MinIO/R2 uploads, immutable versions, ClamAV quarantine, bounded document/OCR extraction.
+- NVIDIA NIM Nemotron assessment with structured claims, citations, uncertainty and missing evidence.
+- Explicit, equal-weight approval/rejection for an exact version and financial consequence.
+- PayPal Sandbox orders, capture and full/partial refunds; verified webhooks confirm financial state.
+- PostgreSQL outbox, BullMQ retries, safe request IDs, append-only audit, per-user budgets.
 
-For all services in containers:
+`/preview` preserves clearly labeled Phase 1 sample screens. `/workspace` uses real records;
+unconfigured identity/providers stay unavailable. PNG/JPEG supports bounded local Tesseract OCR.
+URL evidence ingestion is disabled. Confidence is a bounded model estimate,
+not empirically calibrated. Inference cannot approve or execute financial actions.
+
+## Configuration and validation
+
+See [Phase 2 setup and live gates](docs/PHASE_2.md), [security](SECURITY.md),
+[architecture](ARCHITECTURE.md), [design](DESIGN_SYSTEM.md), and [validation](docs/VALIDATION.md).
+See [capture and Unicode investigation](docs/PAYPAL_CAPTURE_REPAIR.md) for the
+merchant-switch failure, preserved original order, refresh repair, and real-test boundaries.
+See [confirmed receipts, Activity semantics and sign-in](docs/FINANCIAL_RECEIPTS.md) for
+authoritative ID sources, private receipt routes and focused product completion.
 
 ```sh
-docker compose up --build --wait
-```
-
-Migrations run before the API starts. Restarting does not erase volumes or recreate tables.
-Do not change an applied migration; add a new numbered SQL migration.
-PostgreSQL uses host port 55432 to avoid the Windows-reserved 5432 port.
-The Docker setup is for local development: loopback ports, disposable credentials, non-root
-app users. Use managed services, strong credentials, TLS, and service-to-service identity for deployment.
-
-## Validation
-
-```sh
-pnpm check
-pnpm db:migrate
+pnpm format:check
+pnpm encoding:check
+pnpm lint
+pnpm typecheck
+pnpm test
 pnpm test:integration
-pnpm exec playwright install chromium
+pnpm build
 pnpm test:e2e
 ```
 
-From `apps/ai`: `.venv/Scripts/python -m ruff check .` and `.venv/Scripts/python -m pytest`.
-Integration tests require the root `.env` values loaded into the shell; CI supplies its own variables.
-PowerShell: `$env:DATABASE_URL='postgresql://pact:pact_local_only@localhost:55432/pact'` and
-`$env:REDIS_URL='redis://localhost:6379'`.
-See [validation report](docs/VALIDATION.md) for the actual results of this bootstrap.
-
-## What is implemented
-
-- `/`: responsive branded landing page.
-- `/workspace`: explicitly labeled sample pacts, filters, search, next action, and activity.
-- `/workspace/new`: boundary-validated draft stored only in the current browser tab session.
-- `/workspace/pacts/:id`: commitment, evidence, assessment, and resolution views.
-- NestJS: health/readiness, sample REST resources, draft validation, centralized safe errors.
-- FastAPI: health, provider capabilities, strict schemas, provider protocol. Assessment requests
-  deliberately return **501**; providers do not make external calls.
-- Financial route returns **403** even with a bearer token. The PayPal adapter is disabled.
-
-Authentication, live business persistence, object uploads, reasoning, OCR, and payment execution
-are intentionally not implemented. The frontend uses shared sample fixtures; it does not imply
-that backend records, accounts, or payments exist.
-
-## Architecture and design
-
-`apps/web` â†’ authorized `apps/api` â†’ internal `apps/ai`; PostgreSQL is the source of truth.
-Redis supports jobs, never the authoritative financial state. Evidence bodies belong in R2.
+Integration tests require DATABASE_URL pointing to a bootstrapped restricted runtime role and
+REDIS_URL. Use `node scripts/test-integration-local.mjs` with the separate `pact_phase3_tests`
+database and Redis DB 3 locally; tests insert synthetic records
+and never delete user data. CI uses an isolated database. Provider doubles exist only inside tests;
+they are not a runtime fallback or evidence of live provider success.
+Python: `apps/ai/.venv/Scripts/python -m ruff check apps/ai` and
+`apps/ai/.venv/Scripts/python -m pytest apps/ai`.
 
 **AI understands. AI recommends. Humans authorize. PayPal executes.**
 
-- [Product scope](PACT_SPEC.md)
-- [Architecture and entity relationships](ARCHITECTURE.md)
-- [Security boundary](SECURITY.md)
-- [Design system](DESIGN_SYSTEM.md)
-- [Contributor workflow](CONTRIBUTING.md)
-- [Phase 2 plan](docs/PHASE_2.md)
-- [Official references](docs/REFERENCES.md)
-- [Figma identity and product layouts](https://www.figma.com/design/Dj8BmtS686mqCGeCCQVDwc)
+## Invite-only hosted Sandbox
 
-The brand pairs Source Serif 4 with Manrope and IBM Plex Mono. Warm paper, forest green,
-copper, semantic status text, square-edged records, and modest 6px control radii keep the
-interface human and precise. Fonts are packaged locally: builds require no Google Fonts request.
+See [Sandbox deployment and acceptance gates](docs/SANDBOX_DEPLOYMENT.md). The overlay uses separate volumes, HTTPS, private service ports and Sandbox-only payments. Run `pnpm sandbox:webhooks` to reconnect the restricted callback relay for local testing; hosted testing uses its own stable HTTPS callback.
 
-Docker host ports can be overridden with WEB_PORT, API_HOST_PORT, and AI_PORT when local services already occupy the defaults.
+For the user-selected split hosting route, see [Render / Supabase / Vercel preparation](docs/RENDER_SUPABASE_VERCEL.md), including unresolved free scanner hosting and actual cloud acceptance gates.
+
+## License
+
+Pact's original source code is available under the [MIT License](LICENSE).
+Dependencies retain their own licenses. PayPal and other third-party names and logos remain
+their owners' property; the project does not claim their endorsement.

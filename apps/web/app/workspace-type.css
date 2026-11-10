@@ -1,0 +1,99 @@
+/* Approved Figma Pact/body 15/24, Pact/label 13/20, Pact/mono 12/18.
+   Scoped to the shared workspace; the original landing and global geometry stay intact. */
+.workspace {
+  --pact-body-size: 15px;
+  --pact-label-size: 13px;
+  --pact-meta-size: 12px;
+  font-size: var(--pact-body-size);
+  line-height: 1.6;
+}
+.app-header nav,
+.app-header .button,
+.app-header .text-link,
+.workspace .button,
+.workspace .button.small,
+.workspace .badge,
+.workspace .filters button,
+.workspace .detail-tabs button,
+.workspace .draft-form label,
+.workspace .commitment-list h3,
+.workspace .pact-cell h3,
+.workspace .evidence-list h3 {
+  font-size: 13px;
+  line-height: 20px;
+}
+.workspace .mono,
+.workspace .eyebrow,
+.workspace .milestone-cell .mono,
+.workspace .evidence-list .mono,
+.workspace .pact-table-head {
+  font-size: 12px;
+  line-height: 18px;
+}
+.workspace .commitment-list p,
+.workspace .record-timeline p,
+.workspace .record-timeline strong,
+.workspace .compact-timeline p,
+.workspace .compact-timeline strong,
+.workspace .pact-cell p,
+.workspace .milestone-cell p,
+.workspace .form-aside > p,
+.workspace .draft-form input,
+.workspace .draft-form textarea,
+.workspace .draft-form select,
+.workspace .empty-state p,
+.workspace .form-error,
+.workspace .notice p {
+  font-size: 15px;
+  line-height: 24px;
+}
+.workspace .field-help,
+.workspace .aside-footer,
+.workspace .record-aside .text-link {
+  font-size: 13px;
+  line-height: 20px;
+}
+.workspace .page-heading h1 {
+  font-size: 48px;
+  line-height: 1.15;
+}
+.workspace .detail-heading h1 {
+  font-size: 46px;
+  line-height: 1.2;
+}
+.workspace .detail-content h2,
+.workspace .workspace-bottom h2,
+.workspace .empty-state h2 {
+  font-size: 32px;
+  line-height: 1.2;
+}
+.workspace .record-aside h2 {
+  font-size: 30px;
+  line-height: 1.2;
+}
+.workspace .section-toolbar h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+.workspace .commitment-list article > div,
+.workspace .pact-cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .workspace .page-heading h1,
+  .workspace .detail-heading h1 {
+    font-size: 37px;
+  }
+  .workspace .detail-content h2,
+  .workspace .workspace-bottom h2,
+  .workspace .empty-state h2 {
+    font-size: 29px;
+  }
+  .workspace .record-aside h2 {
+    font-size: 27px;
+  }
+  .workspace .detail-tabs button {
+    font-size: 12px;
+  }
+}

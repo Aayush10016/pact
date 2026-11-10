@@ -5,7 +5,7 @@ import { readConfig } from '../config';
 @Controller()
 export class HealthController {
   @Get('health') health() {
-    return { data: { service: 'pact-api', status: 'ok', phase: 1 } };
+    return { data: { service: 'pact-api', status: 'ok', phase: 2 } };
   }
   @Get('ready') async ready() {
     const config = readConfig();

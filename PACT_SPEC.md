@@ -36,3 +36,22 @@ Money uses integer minor units with explicit currency; Phase 1 currencies all ha
 
 Use calm, specific, balanced language. Prefer “Needs resolution” to assigning blame.
 Use “No assessment generated” to a fabricated result. Show status in text as well as color.
+
+## Phase 2 continuation
+
+The earlier sections record the approved foundation scope. Phase 2 now connects verified
+identity, persistent agreements, private evidence, advisory NVIDIA Nemotron reasoning,
+versioned human decisions and PayPal Sandbox. The approved frontend identity is preserved.
+Pact lifecycle, payment confirmation and financial attempt progress are separate states.
+There is no auto-approval, AI financial authority, public evidence bucket or production money mode.
+External credentials and the real happy/dispute lifecycle validation remain required release
+gates; implemented adapters and isolated provider-contract tests do not satisfy those gates.
+See docs/PHASE_2.md and docs/VALIDATION.md for actual behavior, configuration and limits.
+
+## Human review extension
+
+The user-authorized continuation adds a separate staff adjudication path. Verified, server-allowlisted reviewers can decide a refund after hearing both parties without seller approval. Immutable staff decisions, exact financial amounts and evidence snapshots are rechecked by the worker; AI has no authority. Existing mutual resolutions keep their two-party consent boundary. Migration 008 adds private cases/messages, immutable decisions and verified seller reviews. See [Human review workflow](docs/HUMAN_REVIEW.md).
+
+## Marketplace continuation
+
+The authorized continuation adds public service discovery, member-owned listings, immutable service agreement snapshots, and verified PayPal platform onboarding. A member can buy and sell with one identity. Direct connected agreements are explicit and bind the verified recipient before creation. Existing developer-merchant financial records keep their original ownership. Migrations 009–010 retain restricted runtime privileges through scoped operations. PayPal partner approval and real connected-account Sandbox acceptance remain release gates; see [Marketplace and connected accounts](docs/MARKETPLACE.md).

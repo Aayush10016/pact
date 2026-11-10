@@ -1,0 +1,99 @@
+.receipt {
+  max-width: 880px;
+  margin: 32px auto 0;
+  padding: 40px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.confirmed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--brand);
+  font-size: 13px;
+}
+.receipt h1 {
+  font-size: clamp(34px, 4vw, 48px);
+}
+.amount {
+  font-family: var(--font-mono);
+  font-size: clamp(28px, 4vw, 40px);
+  margin: 24px 0 12px;
+}
+.amount span {
+  font-size: 16px;
+  color: var(--muted);
+}
+.intro {
+  color: var(--muted);
+  margin-bottom: 32px;
+}
+.fields {
+  margin: 0;
+}
+.fields > div {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.fields dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.identifier {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.footer {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.footer p + p {
+  margin-top: 12px;
+}
+.summary {
+  border-block: 1px solid var(--line);
+  padding: 24px 0;
+  margin-top: 32px;
+}
+.summary h3 {
+  margin-bottom: 16px;
+}
+.summary > div {
+  padding-block: 12px;
+}
+.summary .text-link {
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  .receipt {
+    padding: 24px 20px;
+  }
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .fields > div {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}

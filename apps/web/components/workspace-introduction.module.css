@@ -1,0 +1,227 @@
+.introduction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 64px;
+  min-height: calc(100svh - 332px);
+}
+
+.message {
+  max-width: 460px;
+}
+
+.eyebrow {
+  margin-bottom: 24px;
+}
+
+.message h1 {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 3.5vw, 48px);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1.16;
+  max-width: 420px;
+}
+
+.description {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.8;
+  max-width: 370px;
+  margin-top: 24px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.artifact {
+  width: 100%;
+  max-width: 480px;
+  justify-self: center;
+}
+
+.parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  padding-inline: 24px;
+}
+
+.parties > div {
+  border-top: 1px solid var(--brand);
+  padding-top: 12px;
+}
+
+.parties > div:last-child {
+  border-color: var(--accent);
+}
+
+.parties p {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.join {
+  height: 32px;
+  width: 50%;
+  border: 1px solid var(--line);
+  border-top: 0;
+  margin: 0 auto 16px;
+  position: relative;
+}
+
+.join::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  height: 17px;
+  border-left: 1px solid var(--brand);
+}
+
+.record {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 24px 32px 20px;
+}
+
+.recordHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.recordMark {
+  color: var(--brand);
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.record h2 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  margin-block: 12px 16px;
+}
+
+.entries > div {
+  display: grid;
+  grid-template-columns: 24px 1fr 1.2fr;
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-block: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.entries > div > :first-child {
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.entries > div > :last-child {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.recordFooter {
+  color: var(--brand);
+  font-size: 11px;
+  line-height: 1.5;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.caption {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  margin-top: 16px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .introduction {
+    gap: 40px;
+  }
+
+  .record {
+    padding-inline: 24px;
+  }
+
+  .entries > div {
+    gap: 8px;
+  }
+
+  .actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+  }
+}
+
+@media (max-width: 800px) {
+  .introduction {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 48px;
+    min-height: 0;
+    padding-block: 16px;
+  }
+
+  .message {
+    max-width: 480px;
+  }
+
+  .artifact {
+    justify-self: start;
+    max-width: 420px;
+  }
+}
+
+@media (max-width: 480px) {
+  .message h1 {
+    font-size: 38px;
+  }
+
+  .description {
+    font-size: 14px;
+  }
+
+  .parties {
+    gap: 24px;
+    padding-inline: 16px;
+  }
+
+  .parties p {
+    font-size: 19px;
+  }
+
+  .record {
+    padding-inline: 20px;
+  }
+
+  .record h2 {
+    font-size: 29px;
+  }
+
+  .entries > div {
+    grid-template-columns: 20px 1fr 1.25fr;
+  }
+}
